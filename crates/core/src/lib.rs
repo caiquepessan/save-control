@@ -5,3 +5,5 @@ pub mod error;
 pub mod fsglob;
 pub mod manifest;
 pub mod placeholder;
+pub mod registry;
+pub mod stores;
