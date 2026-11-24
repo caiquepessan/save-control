@@ -1,7 +1,9 @@
 //! O cofre: uma pasta com uma subpasta por jogo e um `.zip` por backup.
 
 pub mod format;
+pub mod index;
 pub mod read;
+pub mod retention;
 pub mod write;
 
 use std::path::{Path, PathBuf};

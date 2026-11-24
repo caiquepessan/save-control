@@ -4,6 +4,7 @@ pub mod catalog;
 pub mod custom;
 pub mod env;
 pub mod error;
+pub mod fingerprint;
 pub mod fsglob;
 pub mod fsutil;
 pub mod local_state;
