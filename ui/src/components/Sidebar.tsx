@@ -1,24 +1,12 @@
 import { LayoutGrid, SlidersHorizontal } from "lucide-react";
 import { useMemo } from "react";
 import type { GameView } from "../api/gerado/GameView";
-import { FONTES, contagens, type Fonte } from "../lib/library";
+import { COR_FONTE, FONTES, contagens } from "../lib/library";
 import { useApp, type Tela } from "../store/app";
 import { T } from "../texto";
 import { VaultCard } from "./VaultCard";
 
 const NENHUM: GameView[] = [];
-
-/** Cor do quadradinho de cada fonte (mockup A). */
-const COR_FONTE: Record<Fonte, string> = {
-  steam: "#5aa9ff",
-  epic: "#c9ced8",
-  gog: "#d18cff",
-  pcOutros: "#8b95a8",
-  recomp: "#3ee6a8",
-  emulador: "#b18cff",
-  manual: "#ffb547",
-  cofre: "#6b7489",
-};
 
 function ItemMenu({ tela, rotulo, icone, contagem }: { tela: Tela; rotulo: string; icone: React.ReactNode; contagem?: number }) {
   const atual = useApp((s) => s.tela);

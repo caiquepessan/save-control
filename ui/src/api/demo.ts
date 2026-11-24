@@ -242,7 +242,11 @@ export function createDemoBackend(opcoes: OpcoesDemo = {}): DemoBackend {
     diskFree: 620 * GB,
   };
   let cofre = vault.path;
-  const config = { userRoots: ["D:\\Jogos"], includeConfig: false, steamCovers: true, manifestLoaded: true };
+  // Pastas que já têm cofre: no primeiro uso e com o cofre sumido, nem a padrão tem.
+  // Fora isso, qualquer pasta com "cofre" no nome finge ter um.
+  const cofres = new Set<string>(fase === "pronto" || fase === "falhou" ? [vault.path] : []);
+  const temCofre = (pasta: string) => cofres.has(pasta) || (pasta !== vault.path && pasta.toLowerCase().includes("cofre"));
+  const config ={ userRoots: ["D:\\Jogos"], includeConfig: false, steamCovers: true, manifestLoaded: true };
   const abertos = new Set<string>([IDS.reino]);
   const ouvintesCapa = new Set<(id: string, caminho: string) => void>();
   const ouvintesFechar = new Set<() => void>();
@@ -485,17 +489,20 @@ export function createDemoBackend(opcoes: OpcoesDemo = {}): DemoBackend {
     },
     async trocarCofre(pasta, criar) {
       await espera();
-      if (!criar && !pasta.toLowerCase().includes("cofre")) throw erro("naoEncontrado", "Não há um cofre nessa pasta.");
+      if (!criar && !temCofre(pasta)) throw erro("naoEncontrado", "Não há um cofre nessa pasta.");
+      cofres.add(pasta);
       cofre = pasta;
       fase = "pronto";
       return estado();
     },
     async inspecionarCofre(pasta) {
       await espera();
-      return pasta.toLowerCase().includes("cofre") ? { exists: true, versions: 212 } : { exists: false, versions: 0 };
+      return temCofre(pasta) ? { exists: true, versions: 212 } : { exists: false, versions: 0 };
     },
     async tentarCofreDeNovo() {
       await espera();
+      // Na demonstração, o HD "volta" na primeira tentativa.
+      cofres.add(cofre);
       fase = "pronto";
       return estado();
     },
@@ -506,6 +513,7 @@ export function createDemoBackend(opcoes: OpcoesDemo = {}): DemoBackend {
     },
     async concluirPrimeiroUso(pastaDoCofre) {
       await espera();
+      cofres.add(pastaDoCofre);
       cofre = pastaDoCofre;
       fase = "pronto";
       return estado();

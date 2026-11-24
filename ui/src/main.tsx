@@ -12,6 +12,7 @@ import "./styles/app.css";
 import "./styles/biblioteca.css";
 import "./styles/painel.css";
 import "./styles/dialogos.css";
+import "./styles/telas.css";
 
 import { StrictMode } from "react";
 import { createRoot } from "react-dom/client";

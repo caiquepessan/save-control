@@ -27,6 +27,18 @@ describe("estrutura da janela", () => {
     expect(itens).toEqual(["Biblioteca", "Configurações"]);
   });
 
+  it("os avisos do app aparecem ao abrir e ficam até fechar", async () => {
+    const backend = createDemoBackend({ atraso: 0 });
+    const original = backend.estado;
+    const aviso = "As configurações estavam danificadas e voltaram ao padrão.";
+    vi.spyOn(backend, "estado").mockImplementation(async () => ({ ...(await original()), warnings: [aviso] }));
+    const { store } = renderApp(backend);
+    const toast = (await screen.findByText(aviso)).closest(".toast")!;
+    expect(store.getState().toasts.filter((t) => t.texto === aviso)).toEqual([expect.objectContaining({ fixo: true })]);
+    await userEvent.click(within(toast as HTMLElement).getByRole("button", { name: "Fechar aviso" }));
+    expect(screen.queryByText(aviso)).not.toBeInTheDocument();
+  });
+
   it("o cartão do cofre mostra a pasta e as versões guardadas", async () => {
     renderApp(createDemoBackend({ atraso: 0 }));
     const cartao = await screen.findByTestId("cartao-cofre");

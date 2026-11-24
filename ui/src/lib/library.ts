@@ -11,6 +11,18 @@ export type Fonte = "steam" | "epic" | "gog" | "pcOutros" | "recomp" | "emulador
 export const CHIPS: Chip[] = ["todos", "pc", "recomp", "emulador", "atencao"];
 export const FONTES: Fonte[] = ["steam", "epic", "gog", "pcOutros", "recomp", "emulador", "manual", "cofre"];
 
+/** Cor do quadradinho de cada fonte (mockup A): menu lateral e resumo do primeiro uso. */
+export const COR_FONTE: Record<Fonte, string> = {
+  steam: "#5aa9ff",
+  epic: "#c9ced8",
+  gog: "#d18cff",
+  pcOutros: "#8b95a8",
+  recomp: "#3ee6a8",
+  emulador: "#b18cff",
+  manual: "#ffb547",
+  cofre: "#6b7489",
+};
+
 export interface Filtro {
   chip: Chip;
   fonte: Fonte | null;

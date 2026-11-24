@@ -17,10 +17,17 @@ export type Aba = "historico" | "arquivos" | "ajustes";
 
 export interface Toast {
   id: number;
-  tipo: "ok" | "erro" | "info";
+  tipo: "ok" | "erro" | "info" | "aviso";
   texto: string;
-  /** Erros ficam até a pessoa fechar. */
+  /** Erros e avisos ficam até a pessoa fechar. */
   fixo: boolean;
+}
+
+/** Uma pasta escolhida para o cofre, já inspecionada. */
+export interface CofreEscolhido {
+  pasta: string;
+  existe: boolean;
+  versoes: number;
 }
 
 export interface Painel {
@@ -44,6 +51,8 @@ export interface AppState {
   backend: Backend;
   estado: AppStateView | null;
   erroInicial: string | null;
+  /** O primeiro uso fica na tela até a pessoa abrir a biblioteca, mesmo com o app já pronto. */
+  assistente: boolean;
   tela: Tela;
   biblioteca: LibraryView | null;
   filtro: Filtro;
@@ -62,6 +71,14 @@ export interface AppState {
   selecaoArquivos: { id: string } | null;
 
   carregarEstado(): Promise<void>;
+  /** Novo estado do app (cofre trocado, achado ou criado): limpa o que era do cofre anterior. */
+  aplicarEstado(estado: AppStateView): Promise<void>;
+  /** Fim do primeiro uso: vai para a biblioteca. */
+  concluirAssistente(): Promise<void>;
+  /** Escolher uma pasta e ver se já tem cofre; null se a pessoa desistiu. */
+  escolherCofre(titulo: string): Promise<CofreEscolhido | null>;
+  /** Devolve a mensagem de erro ou null se deu certo. */
+  trocarCofre(pasta: string, criar: boolean): Promise<string | null>;
   carregarBiblioteca(): Promise<void>;
   irPara(tela: Tela): void;
   definirFiltro(f: Partial<Filtro>): void;
@@ -137,6 +154,7 @@ export function createAppStore(backend: Backend) {
     backend,
     estado: null,
     erroInicial: null,
+    assistente: false,
     tela: "biblioteca",
     biblioteca: null,
     filtro: FILTRO_INICIAL,
@@ -154,7 +172,11 @@ export function createAppStore(backend: Backend) {
     async carregarEstado() {
       try {
         const estado = await backend.estado();
-        set({ estado, erroInicial: null });
+        set({ estado, erroInicial: null, assistente: estado.phase === "primeiroUso" });
+        // Configuração danificada, dados fora da pasta do app…: avisa uma vez só.
+        for (const aviso of estado.warnings) {
+          if (!get().toasts.some((t) => t.texto === aviso)) get().avisar("aviso", aviso);
+        }
         if (estado.phase === "pronto") {
           await get().carregarBiblioteca();
           // Abre com o cache na hora e escaneia em seguida.
@@ -162,6 +184,40 @@ export function createAppStore(backend: Backend) {
         }
       } catch (e) {
         set({ erroInicial: ErroApp.de(e).message });
+      }
+    },
+
+    async aplicarEstado(estado) {
+      set({ estado, historicos: {}, painel: null, restauracao: null, selecaoArquivos: null, dialogo: null });
+      if (estado.phase === "pronto" && !get().assistente) {
+        await get().carregarBiblioteca();
+        void get().escanear();
+      }
+    },
+
+    async concluirAssistente() {
+      set({ assistente: false, tela: "biblioteca" });
+      if (get().estado?.phase === "pronto") await get().carregarBiblioteca();
+    },
+
+    async escolherCofre(titulo) {
+      try {
+        const pasta = await backend.escolherPasta(titulo);
+        if (!pasta) return null;
+        const sonda = await backend.inspecionarCofre(pasta);
+        return { pasta, existe: sonda.exists, versoes: sonda.versions };
+      } catch (e) {
+        get().avisar("erro", ErroApp.de(e).message);
+        return null;
+      }
+    },
+
+    async trocarCofre(pasta, criar) {
+      try {
+        await get().aplicarEstado(await backend.trocarCofre(pasta, criar));
+        return null;
+      } catch (e) {
+        return ErroApp.de(e).message;
       }
     },
 
@@ -342,7 +398,7 @@ export function createAppStore(backend: Backend) {
     },
 
     avisar(tipo, texto) {
-      const toast: Toast = { id: proximoToast++, tipo, texto, fixo: tipo === "erro" };
+      const toast: Toast = { id: proximoToast++, tipo, texto, fixo: tipo === "erro" || tipo === "aviso" };
       set({ toasts: [...get().toasts, toast] });
     },
 

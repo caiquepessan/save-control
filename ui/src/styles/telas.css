@@ -1,0 +1,504 @@
+/* Telas de fase (primeiro uso, cofre sumido, falhou) e Configurações, no visual A. */
+
+/* Primeiro uso: um cartão centralizado de até 560 px, com os passos em pontos. */
+.assistente,
+.tela-centro {
+  flex: 1;
+  min-height: 0;
+  display: grid;
+  place-items: center;
+  padding: 24px;
+  overflow-y: auto;
+}
+
+.assistente-caixa {
+  width: 100%;
+  max-width: 560px;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  text-align: center;
+  padding: 34px 40px 32px;
+  border-radius: 20px;
+  background: linear-gradient(180deg, #131924, #0e121a);
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  box-shadow: 0 40px 80px -30px rgba(0, 0, 0, 0.8);
+  animation: subir var(--dur-slow) var(--ease);
+}
+
+.pontos {
+  display: flex;
+  gap: 6px;
+  margin-bottom: 26px;
+}
+
+.pontos i {
+  width: 6px;
+  height: 6px;
+  border-radius: 999px;
+  background: rgba(255, 255, 255, 0.14);
+  transition:
+    width var(--dur-slow) var(--ease),
+    background var(--dur-slow);
+}
+
+.pontos i.feito {
+  background: rgba(62, 230, 168, 0.45);
+}
+
+.pontos i.on {
+  width: 22px;
+  background: var(--acc);
+  box-shadow: 0 0 10px rgba(62, 230, 168, 0.55);
+}
+
+.logo-grande {
+  width: 64px;
+  height: 64px;
+  color: var(--acc);
+  filter: drop-shadow(0 12px 26px rgba(62, 230, 168, 0.45));
+  margin-bottom: 18px;
+}
+
+.assistente-icone,
+.icone-grande {
+  width: 56px;
+  height: 56px;
+  border-radius: 16px;
+  display: grid;
+  place-items: center;
+  margin-bottom: 18px;
+  flex: none;
+  background: rgba(62, 230, 168, 0.12);
+  color: var(--acc);
+}
+
+.assistente-icone .ic,
+.icone-grande .ic {
+  width: 26px;
+  height: 26px;
+}
+
+.assistente-icone.ok {
+  background: linear-gradient(135deg, var(--acc), var(--acc2));
+  color: var(--acc-ink);
+  box-shadow: 0 14px 34px -12px rgba(62, 230, 168, 0.7);
+}
+
+.icone-grande.aviso {
+  background: rgba(255, 181, 71, 0.12);
+  color: var(--warn);
+  box-shadow: 0 0 0 8px rgba(255, 181, 71, 0.05);
+}
+
+.icone-grande.perigo {
+  background: rgba(255, 107, 107, 0.12);
+  color: var(--danger);
+  box-shadow: 0 0 0 8px rgba(255, 107, 107, 0.05);
+}
+
+.assistente h1,
+.caixa-centro h1 {
+  margin: 0;
+  font: 800 24px/1.2 var(--font-title);
+  color: #fff;
+  letter-spacing: -0.015em;
+  outline: none;
+  overflow-wrap: anywhere;
+}
+
+.assistente-texto,
+.tela-texto {
+  margin: 12px 0 0;
+  max-width: 460px;
+  color: var(--tx2);
+  font-size: 13.5px;
+  line-height: 1.55;
+  overflow-wrap: anywhere;
+}
+
+.pasta-cofre {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  width: 100%;
+  margin-top: 20px;
+  padding: 11px 14px;
+  border-radius: 12px;
+  background: rgba(0, 0, 0, 0.28);
+  border: 1px solid var(--line);
+  color: var(--acc);
+  text-align: left;
+}
+
+.modal .pasta-cofre {
+  margin-top: 14px;
+}
+
+.pasta-cofre .mono {
+  flex: 1;
+  font-size: 12.5px;
+}
+
+.nota {
+  width: 100%;
+  margin: 14px 0 0;
+  padding: 10px 13px;
+  border-radius: 11px;
+  font-size: 12.5px;
+  line-height: 1.5;
+  text-align: left;
+}
+
+.nota.ok {
+  background: rgba(62, 230, 168, 0.08);
+  border: 1px solid rgba(62, 230, 168, 0.25);
+  color: #c9f3e4;
+}
+
+.nota.aviso {
+  background: rgba(255, 181, 71, 0.08);
+  border: 1px solid rgba(255, 181, 71, 0.25);
+  color: #ffe2b5;
+}
+
+.assistente .erro-form {
+  width: 100%;
+  text-align: left;
+}
+
+.assistente-botoes,
+.tela-botoes {
+  display: flex;
+  justify-content: center;
+  flex-wrap: wrap;
+  gap: 10px;
+  margin-top: 26px;
+}
+
+/* Progresso animado do escaneamento e do primeiro backup. */
+.barra-andando {
+  position: relative;
+  width: 100%;
+  height: 4px;
+  margin-top: 22px;
+  border-radius: 999px;
+  background: rgba(255, 255, 255, 0.06);
+  overflow: hidden;
+}
+
+.barra-andando i {
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  width: 38%;
+  border-radius: inherit;
+  background: linear-gradient(90deg, transparent, var(--acc), var(--acc2), transparent);
+  animation: andar 1.4s var(--ease) infinite;
+}
+
+@keyframes andar {
+  from {
+    left: -40%;
+  }
+  to {
+    left: 100%;
+  }
+}
+
+.passos {
+  list-style: none;
+  width: 100%;
+  margin: 18px 0 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  text-align: left;
+}
+
+.passo {
+  display: flex;
+  align-items: center;
+  gap: 11px;
+  padding: 11px 14px;
+  border-radius: 12px;
+  background: var(--panel);
+  border: 1px solid var(--line);
+  color: var(--tx3);
+  font-weight: 600;
+}
+
+.passo .espera {
+  width: 16px;
+  height: 16px;
+  border-radius: 50%;
+  border: 2px solid rgba(255, 255, 255, 0.14);
+  flex: none;
+}
+
+.passo.rodando {
+  color: var(--tx);
+  border-color: rgba(62, 230, 168, 0.3);
+}
+
+.passo.rodando .ic,
+.passo.ok .ic {
+  color: var(--acc);
+}
+
+.passo.ok {
+  color: var(--tx2);
+}
+
+.passo.falhou {
+  color: #ffe2b5;
+}
+
+.passo.falhou .ic {
+  color: var(--warn);
+}
+
+.chips.centro {
+  justify-content: center;
+  margin: 18px 0 0;
+}
+
+.chip .cor {
+  width: 8px;
+  height: 8px;
+  border-radius: 3px;
+}
+
+/* Cofre sumido e falha ao abrir. */
+.caixa-centro {
+  width: 100%;
+  max-width: 520px;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  text-align: center;
+  animation: subir var(--dur-slow) var(--ease);
+}
+
+.caixa-centro .nota {
+  max-width: 460px;
+  text-align: center;
+}
+
+.caixa-centro .lnk-sec {
+  margin-top: 16px;
+}
+
+.erro-detalhe {
+  margin: 14px 0 0;
+  max-width: 100%;
+  padding: 10px 13px;
+  border-radius: 11px;
+  background: rgba(255, 107, 107, 0.08);
+  border: 1px solid rgba(255, 107, 107, 0.28);
+  color: #ffc9c9;
+  font: 500 12px/1.5 var(--mono);
+  overflow-wrap: anywhere;
+  user-select: text;
+}
+
+/* Configurações */
+.config {
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
+  height: 100%;
+}
+
+.config .hd {
+  margin: 8px 0 16px;
+}
+
+.config .hd .t {
+  font-size: 20px;
+}
+
+.config-rolagem {
+  flex: 1;
+  min-height: 0;
+  overflow-y: auto;
+  margin: 0 -10px;
+  padding: 2px 10px 28px;
+}
+
+.config-coluna {
+  max-width: 760px;
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+}
+
+.cfg-secao {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  padding: 16px 18px;
+  border-radius: var(--r-md);
+  background: var(--panel);
+  border: 1px solid var(--line);
+}
+
+.cfg-secao h2 {
+  margin: 0;
+  display: flex;
+  align-items: center;
+  gap: 9px;
+  font: 700 13.5px/1.2 var(--font-title);
+  color: #fff;
+}
+
+.cfg-secao h2 .ic {
+  color: var(--acc);
+}
+
+.cfg-linha {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  min-width: 0;
+}
+
+.cfg-linha .btn-pequeno {
+  align-self: center;
+}
+
+.cfg-caminho {
+  flex: 1;
+  font-size: 12px;
+  padding: 8px 11px;
+  border-radius: var(--r-sm);
+  background: rgba(0, 0, 0, 0.25);
+  border: 1px solid var(--line);
+}
+
+.cfg-lista {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  border-radius: 11px;
+  border: 1px solid var(--line);
+  background: rgba(255, 255, 255, 0.02);
+}
+
+.cfg-lista li {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 9px 12px;
+  border-bottom: 1px solid var(--line);
+  font-size: 12.5px;
+}
+
+.cfg-lista li:last-child {
+  border-bottom: 0;
+}
+
+.cfg-lista .ic {
+  color: var(--tx3);
+}
+
+.cfg-lista .mono,
+.cfg-nome {
+  flex: 1;
+  min-width: 0;
+}
+
+.cfg-nome {
+  color: var(--tx);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.cfg-vazio,
+.cfg-resultado {
+  margin: 0;
+  color: var(--tx3);
+  font-size: 12.5px;
+}
+
+.cfg-resultado {
+  color: var(--tx2);
+}
+
+.estado-base {
+  flex: 1;
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  color: var(--tx2);
+  font-weight: 600;
+}
+
+.estado-base i {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background: var(--tx3);
+}
+
+.estado-base.ok {
+  color: var(--tx);
+}
+
+.estado-base.ok i {
+  background: var(--ok);
+  box-shadow: 0 0 8px var(--ok);
+}
+
+.cfg-versao {
+  margin: 0;
+  color: #fff;
+  font-weight: 700;
+}
+
+/* Chave liga/desliga (input checkbox com role="switch"). */
+.chave-linha {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+  color: var(--tx);
+  font-weight: 500;
+  cursor: pointer;
+}
+
+input.chave {
+  appearance: none;
+  position: relative;
+  width: 38px;
+  height: 22px;
+  margin: 0;
+  flex: none;
+  border-radius: 999px;
+  background: rgba(255, 255, 255, 0.12);
+  cursor: pointer;
+  transition: background var(--dur);
+}
+
+input.chave::after {
+  content: "";
+  position: absolute;
+  top: 3px;
+  left: 3px;
+  width: 16px;
+  height: 16px;
+  border-radius: 50%;
+  background: #fff;
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.4);
+  transition: transform var(--dur) var(--ease);
+}
+
+input.chave:checked {
+  background: linear-gradient(135deg, var(--acc), var(--acc2));
+}
+
+input.chave:checked::after {
+  transform: translateX(16px);
+}
