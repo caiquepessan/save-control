@@ -2,4 +2,5 @@
 
 pub mod env;
 pub mod error;
+pub mod fsglob;
 pub mod placeholder;
