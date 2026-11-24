@@ -1,0 +1,31 @@
+/* Tokens da direção A (spec §12). */
+:root {
+  --bg: #0a0d13;
+  --panel: #11151d;
+  --panel2: #161b25;
+  --line: rgba(255, 255, 255, 0.065);
+  --winline: rgba(255, 255, 255, 0.08);
+  --tx: #e9edf5;
+  --tx2: #a3acbd;
+  --tx3: #6b7489;
+  --acc: #3ee6a8;
+  --acc2: #19c6d8;
+  --acc-ink: #03231a;
+  --ok: #3ee6a8;
+  --warn: #ffb547;
+  --info: #5aa9ff;
+  --danger: #ff6b6b;
+
+  --r-xs: 7px;
+  --r-sm: 10px;
+  --r-md: 14px;
+  --r-lg: 16px;
+
+  --font: Inter, "Segoe UI Variable Text", "Segoe UI", system-ui, sans-serif;
+  --font-title: Sora, Inter, sans-serif;
+  --mono: "Cascadia Code", "JetBrains Mono", Consolas, monospace;
+
+  --dur: 180ms;
+  --dur-slow: 220ms;
+  --ease: cubic-bezier(0.2, 0.7, 0.2, 1);
+}
