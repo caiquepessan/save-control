@@ -2,7 +2,7 @@
 //! Usada pelo CLI e, no Plano 2, pelo app Tauri.
 
 use std::collections::{BTreeMap, HashSet};
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 
 use chrono::{Local, Utc};
 
@@ -12,21 +12,21 @@ use crate::custom::CustomGame;
 use crate::env::SystemPaths;
 use crate::error::{Error, Result};
 use crate::fingerprint::{HashCache, fingerprint_of_game};
-use crate::local_state::LocalState;
+use crate::local_state::{LocalGameSettings, LocalState};
 use crate::machine::MachineIdentity;
 use crate::manifest::Manifest;
 use crate::manifest::store::{Fetcher, ManifestStore, UpdateOutcome};
 use crate::model::{Game, GameSource, SaveRoot};
 use crate::placeholder::{InstallCandidate, slash};
-use crate::process::ProcessProbe;
+use crate::process::{ProcessProbe, is_game_running};
 use crate::registry::RegistryReader;
 use crate::restore::{RestoreOptions, RestoreReport, restore_snapshot};
 use crate::scan::{ScanInput, scan, scan_game};
 use crate::status::{GameStatus, status_of};
 use crate::stores::{Installs, Store, detect_installs};
-use crate::targets::TargetCtx;
+use crate::targets::{TargetCtx, resolve_targets};
 use crate::vault::Vault;
-use crate::vault::format::SnapshotKind;
+use crate::vault::format::{SnapshotKind, SnapshotMeta};
 use crate::vault::index::{SnapshotEntry, VaultIndex};
 use crate::vault::read::read_meta;
 use crate::vault::retention::RetentionPolicy;
@@ -52,10 +52,39 @@ pub struct EngineConfig {
     pub include_config: bool,
 }
 
+/// Para onde vai cada raiz de um backup, se ele for restaurado agora.
+#[derive(Clone, Debug, PartialEq)]
+pub struct RestoreTarget {
+    pub alias: String,
+    pub template: String,
+    pub path: PathBuf,
+}
+
+/// O que a confirmação de restaurar mostra, sem mexer em nada.
+#[derive(Clone, Debug)]
+pub struct RestorePreview {
+    pub entry: SnapshotEntry,
+    pub targets: Vec<RestoreTarget>,
+    pub file_count: usize,
+    pub total_size: u64,
+    pub running: bool,
+}
+
+#[derive(Clone, Debug)]
+pub struct VaultSummary {
+    pub path: PathBuf,
+    pub available: bool,
+    pub versions: usize,
+    /// Tamanho dos `.zip` no disco.
+    pub zip_bytes: u64,
+    pub disk_total: Option<u64>,
+    pub disk_free: Option<u64>,
+}
+
 pub struct Engine {
     cfg: EngineConfig,
     sys: SystemPaths,
-    reg: Box<dyn RegistryReader>,
+    reg: Box<dyn RegistryReader + Send>,
     store: ManifestStore,
     manifest: Option<Manifest>,
     local: LocalState,
@@ -69,7 +98,7 @@ pub struct Engine {
 }
 
 impl Engine {
-    pub fn open(cfg: EngineConfig, sys: SystemPaths, reg: Box<dyn RegistryReader>) -> Result<Engine> {
+    pub fn open(cfg: EngineConfig, sys: SystemPaths, reg: Box<dyn RegistryReader + Send>) -> Result<Engine> {
         let store = ManifestStore::new(cfg.data_dir.join("base"));
         // Base corrompida não impede o app de abrir: só fica sem jogos de PC.
         let manifest = store.load().ok().flatten();
@@ -129,7 +158,9 @@ impl Engine {
         let mut changed = false;
         for dir in dirs.flatten().filter(|d| d.path().is_dir()) {
             if let Some(def) = Vault::read_descriptor(&dir.path()).and_then(|d| d.custom) {
-                if !self.local.custom_games.iter().any(|g| g.id == def.id) {
+                // Removido ou ignorado neste PC: não volta do cofre.
+                let ignored = self.local.settings.get(&def.id).is_some_and(|s| s.ignored);
+                if !ignored && !self.local.custom_games.iter().any(|g| g.id == def.id) {
                     self.local.custom_games.push(def);
                     changed = true;
                 }
@@ -266,6 +297,146 @@ impl Engine {
         self.index.for_game(game_id).into_iter().cloned().collect()
     }
 
+    fn find_entry(&self, game_id: &str, file_name: &str) -> Result<SnapshotEntry> {
+        self.history(game_id)
+            .into_iter()
+            .find(|e| e.file_name == file_name)
+            .ok_or_else(|| Error::NotFound(format!("backup {file_name}")))
+    }
+
+    /// Metadados de um backup do jogo (lista de arquivos, raízes…).
+    pub fn snapshot_meta(&self, game_id: &str, file_name: &str) -> Result<SnapshotMeta> {
+        read_meta(&self.find_entry(game_id, file_name)?.zip_path(&self.vault))
+    }
+
+    /// Jogos do último escaneamento.
+    pub fn games(&self) -> &[Game] {
+        &self.games
+    }
+
+    /// Reescaneia só este jogo no disco e calcula o status dele.
+    pub fn rescan_game(&mut self, game_id: &str) -> Result<(Game, GameStatus)> {
+        let game = self.refresh_game(game_id)?;
+        let fp = fingerprint_of_game(&game, &mut self.hashes).unwrap_or_default();
+        let status = status_of(&game, &fp, &self.index);
+        self.persist()?;
+        Ok((game, status))
+    }
+
+    pub fn game_settings(&self, game_id: &str) -> LocalGameSettings {
+        self.local.settings.get(game_id).cloned().unwrap_or_default()
+    }
+
+    /// Muda os ajustes deste PC para um jogo e grava `jogos.json`.
+    pub fn update_game_settings(&mut self, game_id: &str, f: impl FnOnce(&mut LocalGameSettings)) -> Result<()> {
+        let s = self.local.settings.entry(game_id.to_string()).or_default();
+        f(s);
+        if *s == LocalGameSettings::default() {
+            self.local.settings.remove(game_id);
+        }
+        self.local.save(&self.local_path())
+    }
+
+    /// Tira a definição deste PC e marca o jogo como ignorado, para ele não
+    /// voltar do cofre. Os backups continuam no cofre.
+    pub fn remove_custom_game(&mut self, game_id: &str) -> Result<()> {
+        let before = self.local.custom_games.len();
+        self.local.custom_games.retain(|g| g.id != game_id);
+        if self.local.custom_games.len() == before {
+            return Err(Error::NotFound(format!("jogo adicionado à mão {game_id}")));
+        }
+        self.local.settings.entry(game_id.to_string()).or_default().ignored = true;
+        self.games.retain(|g| g.id != game_id);
+        self.local.save(&self.local_path())
+    }
+
+    pub fn ignored_ids(&self) -> Vec<String> {
+        self.local.settings.iter().filter(|(_, s)| s.ignored).map(|(id, _)| id.clone()).collect()
+    }
+
+    pub fn has_manifest(&self) -> bool {
+        self.manifest.is_some()
+    }
+
+    pub fn include_config(&self) -> bool {
+        self.cfg.include_config
+    }
+
+    /// Vale a partir do próximo escaneamento.
+    pub fn set_include_config(&mut self, on: bool) {
+        self.cfg.include_config = on;
+    }
+
+    pub fn vault_dir(&self) -> &Path {
+        &self.vault.root
+    }
+
+    pub fn user_roots(&self) -> &[PathBuf] {
+        &self.local.user_roots
+    }
+
+    pub fn vault_summary(&self) -> VaultSummary {
+        let zip_bytes = self
+            .index
+            .entries
+            .iter()
+            .filter_map(|e| std::fs::metadata(e.zip_path(&self.vault)).ok())
+            .map(|m| m.len())
+            .sum();
+        VaultSummary {
+            path: self.vault.root.clone(),
+            available: self.vault.ensure_available().is_ok(),
+            versions: self.index.entries.len(),
+            zip_bytes,
+            disk_total: fs4::total_space(&self.vault.root).ok(),
+            disk_free: fs4::available_space(&self.vault.root).ok(),
+        }
+    }
+
+    /// Instalações, contas e pastas do jogo neste PC, para resolver os destinos.
+    fn target_parts(&self, game: &Game, settings: &LocalGameSettings) -> (Vec<InstallCandidate>, Vec<String>, Vec<PathBuf>) {
+        let (installs, user_ids) = self.target_installs(game);
+        let mut game_dirs: Vec<PathBuf> = Vec::new();
+        for d in game.install_dirs.iter().chain(&game.game_dir).chain(&settings.game_dir) {
+            if !game_dirs.iter().any(|x| slash(x).eq_ignore_ascii_case(&slash(d))) {
+                game_dirs.push(d.clone());
+            }
+        }
+        (installs, user_ids, game_dirs)
+    }
+
+    /// Para onde cada raiz iria e o que seria restaurado, sem mexer em nada.
+    /// `NeedsTarget` sobe como erro, igual à restauração.
+    pub fn restore_preview(
+        &mut self,
+        game_id: &str,
+        file_name: &str,
+        overrides: &BTreeMap<String, PathBuf>,
+        probe: &dyn ProcessProbe,
+    ) -> Result<RestorePreview> {
+        let game = self.refresh_game(game_id)?;
+        self.vault.ensure_available()?;
+        let entry = self.find_entry(game_id, file_name)?;
+        let meta = read_meta(&entry.zip_path(&self.vault))?;
+        let settings = self.game_settings(game_id);
+        let (installs, store_user_ids, game_dirs) = self.target_parts(&game, &settings);
+        let ctx = TargetCtx { sys: &self.sys, installs, store_user_ids, game_dirs, remembered: &settings.target_choices };
+        let targets = resolve_targets(&meta, &ctx, overrides)?
+            .into_iter()
+            .map(|(alias, path)| {
+                let template = meta.roots.iter().find(|r| r.alias == alias).map(|r| r.template.clone()).unwrap_or_default();
+                RestoreTarget { alias, template, path }
+            })
+            .collect();
+        Ok(RestorePreview {
+            entry,
+            targets,
+            file_count: meta.files.len(),
+            total_size: meta.files.iter().map(|f| f.size).sum(),
+            running: is_game_running(&game, probe),
+        })
+    }
+
     /// Instalações deste PC que servem para resolver `<base>`/`<storeUserId>` do jogo.
     fn target_installs(&self, game: &Game) -> (Vec<InstallCandidate>, Vec<String>) {
         let Some(title) = game.id.strip_prefix("pc:") else { return (Vec::new(), Vec::new()) };
@@ -290,22 +461,12 @@ impl Engine {
         probe: &dyn ProcessProbe,
     ) -> Result<RestoreReport> {
         let game = self.refresh_game(game_id)?;
-        let entry = self
-            .history(game_id)
-            .into_iter()
-            .find(|e| e.file_name == file_name)
-            .ok_or_else(|| Error::NotFound(format!("backup {file_name}")))?;
+        let entry = self.find_entry(game_id, file_name)?;
         let others: Vec<Game> = self.games.iter().filter(|g| g.id != game_id).cloned().collect();
-        let settings = self.local.settings.get(game_id).cloned().unwrap_or_default();
-        let remembered: BTreeMap<String, PathBuf> = settings.target_choices.clone();
-        let (installs, user_ids) = self.target_installs(&game);
-        let mut game_dirs: Vec<PathBuf> = Vec::new();
-        for d in game.install_dirs.iter().chain(&game.game_dir).chain(&settings.game_dir) {
-            if !game_dirs.iter().any(|x| slash(x).eq_ignore_ascii_case(&slash(d))) {
-                game_dirs.push(d.clone());
-            }
-        }
-        let targets = TargetCtx { sys: &self.sys, installs, store_user_ids: user_ids, game_dirs, remembered: &remembered };
+        let settings = self.game_settings(game_id);
+        let (installs, store_user_ids, game_dirs) = self.target_parts(&game, &settings);
+        let targets =
+            TargetCtx { sys: &self.sys, installs, store_user_ids, game_dirs, remembered: &settings.target_choices };
         let result = {
             let mut ctx = BackupCtx {
                 vault: &self.vault,
@@ -320,12 +481,34 @@ impl Engine {
             restore_snapshot(&mut ctx, &targets, probe, &game, &others, &entry, opts)
         };
         self.persist()?;
-        result
+        let report = result?;
+        if opts.remember && !opts.overrides.is_empty() {
+            let meta = read_meta(&entry.zip_path(&self.vault))?;
+            let s = self.local.settings.entry(game_id.to_string()).or_default();
+            for (alias, path) in &opts.overrides {
+                if let Some(r) = meta.roots.iter().find(|r| &r.alias == alias) {
+                    s.target_choices.insert(r.template.clone(), path.clone());
+                }
+            }
+            self.local.save(&self.local_path())?;
+        }
+        Ok(report)
     }
 
-    pub fn add_custom_game(&mut self, name: &str, save_dirs: &[PathBuf], processes: &[String]) -> Result<CustomGame> {
-        let g = CustomGame::new(name, save_dirs, processes, &self.sys);
+    /// Com `game_dir`, as pastas de save dentro dela viram `<gameDir>/…` e a
+    /// pasta do jogo fica guardada nos ajustes deste PC.
+    pub fn add_custom_game(
+        &mut self,
+        name: &str,
+        save_dirs: &[PathBuf],
+        processes: &[String],
+        game_dir: Option<&Path>,
+    ) -> Result<CustomGame> {
+        let g = CustomGame::new(name, save_dirs, processes, game_dir, &self.sys);
         self.local.custom_games.push(g.clone());
+        if let Some(gd) = game_dir {
+            self.local.settings.entry(g.id.clone()).or_default().game_dir = Some(gd.to_path_buf());
+        }
         self.local.save(&self.local_path())?;
         Ok(g)
     }

@@ -12,6 +12,8 @@ use crate::fsutil::write_atomic;
 #[derive(Clone, Debug, Default, PartialEq, Serialize, Deserialize)]
 #[serde(default)]
 pub struct LocalGameSettings {
+    /// Nome mostrado neste PC (o app usa; a Engine e o cofre mantêm o título original).
+    pub title: Option<String>,
     pub ignored: bool,
     pub game_dir: Option<PathBuf>,
     pub cover: Option<PathBuf>,

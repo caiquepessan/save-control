@@ -40,7 +40,7 @@ fn estado_local_salva_e_carrega() {
     let f = t.path().join("dados/jogos.json");
     assert_eq!(LocalState::load(&f).unwrap(), LocalState::default());
     let mut st = LocalState::default();
-    st.custom_games.push(CustomGame::new("Meu Jogo", &[s.app_data.join("MJ")], &["mj.exe".into()], &s));
+    st.custom_games.push(CustomGame::new("Meu Jogo", &[s.app_data.join("MJ")], &["mj.exe".into()], None, &s));
     st.settings.insert("pc:Jogo A".into(), LocalGameSettings { ignored: true, ..Default::default() });
     st.save(&f).unwrap();
     assert_eq!(LocalState::load(&f).unwrap(), st);
@@ -49,7 +49,7 @@ fn estado_local_salva_e_carrega() {
 #[test]
 fn jogo_manual_novo() {
     let (_t, s) = fake_home();
-    let g = CustomGame::new("Meu Jogo", &[s.app_data.join("MJ")], &[], &s);
+    let g = CustomGame::new("Meu Jogo", &[s.app_data.join("MJ")], &[], None, &s);
     assert!(g.id.starts_with("man:"));
     assert_eq!(g.save_templates, ["<winAppData>/MJ"]);
 }

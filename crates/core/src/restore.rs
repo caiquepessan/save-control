@@ -28,6 +28,9 @@ pub struct RestoreOptions {
     pub overrides: BTreeMap<String, PathBuf>,
     /// Só estes arquivos (alias, rel_path); `None` = restauração completa.
     pub only: Option<BTreeSet<(String, String)>>,
+    /// Lembrar as pastas de `overrides` para as próximas restaurações deste jogo
+    /// neste PC (a `Engine` grava depois de uma restauração bem-sucedida).
+    pub remember: bool,
 }
 
 #[derive(Debug)]

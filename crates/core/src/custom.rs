@@ -1,6 +1,6 @@
 //! Jogos adicionados à mão pelo usuário.
 
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 
 use serde::{Deserialize, Serialize};
 
@@ -16,11 +16,19 @@ pub struct CustomGame {
 }
 
 impl CustomGame {
-    pub fn new(name: &str, save_dirs: &[PathBuf], process_names: &[String], sys: &SystemPaths) -> CustomGame {
+    /// Com `game_dir`, pastas de save dentro dela viram `<gameDir>/…`, para o
+    /// jogo poder ser restaurado em outro PC depois de apontar a pasta lá.
+    pub fn new(
+        name: &str,
+        save_dirs: &[PathBuf],
+        process_names: &[String],
+        game_dir: Option<&Path>,
+        sys: &SystemPaths,
+    ) -> CustomGame {
         CustomGame {
             id: format!("man:{}", uuid::Uuid::new_v4().simple()),
             name: name.trim().to_string(),
-            save_templates: save_dirs.iter().map(|d| templatize(d, sys, None)).collect(),
+            save_templates: save_dirs.iter().map(|d| templatize(d, sys, game_dir)).collect(),
             process_names: process_names.to_vec(),
         }
     }

@@ -83,7 +83,7 @@ fn pasta_downloads_vira_aviso() {
     let dir = t.path().join("D/Downloads/Algo/save");
     write(&dir.join("s.dat"), b"x");
     let mut l = LocalState::default();
-    l.custom_games.push(CustomGame::new("Algo", &[dir.clone()], &[], &s));
+    l.custom_games.push(CustomGame::new("Algo", &[dir.clone()], &[], None, &s));
     let g = run(&s, None, &Installs::default(), &[], &l, false);
     assert!(g[0].warnings.contains(&Warning::RiskyLocation(dir)));
 }

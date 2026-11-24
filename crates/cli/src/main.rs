@@ -168,7 +168,7 @@ fn main() -> anyhow::Result<()> {
                 overrides.insert(alias.to_string(), PathBuf::from(pasta));
             }
             eng.scan()?;
-            let opts = RestoreOptions { overrides, only: None };
+            let opts = RestoreOptions { overrides, ..Default::default() };
             let r = eng.restore(&id, &arquivo, &opts, &SystemProbe)?;
             println!("Restaurado: {} arquivo(s) gravado(s), {} removido(s).", r.written, r.removed);
             if let Some(s) = r.safety {
@@ -176,7 +176,7 @@ fn main() -> anyhow::Result<()> {
             }
         }
         Cmd::Adicionar { nome, pastas, processos } => {
-            let g = eng.add_custom_game(&nome, &pastas, &processos)?;
+            let g = eng.add_custom_game(&nome, &pastas, &processos, None)?;
             println!("Jogo adicionado: {} ({})", g.name, g.id);
         }
     }
