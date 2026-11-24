@@ -248,8 +248,8 @@ export function createDemoBackend(opcoes: OpcoesDemo = {}): DemoBackend {
 
   const espera = () => (atraso > 0 ? new Promise<void>((r) => setTimeout(r, atraso)) : Promise.resolve());
   const copia = <X>(x: X): X => structuredClone(x);
-  const erro = (kind: ErroApp["kind"], message: string, root: string | null = null) =>
-    new ErroApp({ kind, message, root, candidates: [] });
+  const erro = (kind: ErroApp["kind"], message: string, root: string | null = null, candidates: string[] = []) =>
+    new ErroApp({ kind, message, root, alias: root ? "r0" : null, candidates });
   const achar = (id: string): GameView => {
     const g = jogos.find((j) => j.id === id);
     if (!g) throw erro("naoEncontrado", `Não encontrado: jogo ${id}`);
@@ -350,7 +350,10 @@ export function createDemoBackend(opcoes: OpcoesDemo = {}): DemoBackend {
       const s = versao(id, arquivo);
       const r = g.roots[0];
       const template = r?.template ?? "<gameDir>/saves";
-      if (g.needsGameDir && !destinos?.r0) throw erro("precisaDestino", `Escolha onde restaurar ${template}`, template);
+      if (g.needsGameDir && !destinos?.r0) {
+        const candidatos = r?.path ? [r.path] : [];
+        throw erro("precisaDestino", `Escolha onde restaurar ${template}`, template, candidatos);
+      }
       return {
         snapshot: copia(s),
         targets: [{ alias: "r0", template, path: destinos?.r0 ?? r?.path ?? "" }],

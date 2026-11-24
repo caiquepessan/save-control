@@ -386,6 +386,9 @@ pub enum ErrorKind {
 pub struct ErrorView {
     pub kind: ErrorKind,
     pub message: String,
+    /// Em `precisaDestino`: o template da raiz que precisa de destino…
     pub root: Option<String>,
+    /// …e o alias dela no backup (para a interface mandar o destino certo).
+    pub alias: Option<String>,
     pub candidates: Vec<String>,
 }

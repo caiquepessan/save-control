@@ -6,6 +6,7 @@ import { ErroApp, type Backend } from "../api/backend";
 import type { AppStateView } from "../api/gerado/AppStateView";
 import type { GameView } from "../api/gerado/GameView";
 import type { LibraryView } from "../api/gerado/LibraryView";
+import type { RestoreResultView } from "../api/gerado/RestoreResultView";
 import type { SnapshotView } from "../api/gerado/SnapshotView";
 import { FILTRO_INICIAL, type Filtro } from "../lib/library";
 import { T } from "../texto";
@@ -54,6 +55,8 @@ export interface AppState {
   /** Histórico de cada jogo já carregado (do mais novo ao mais velho). */
   historicos: Record<string, SnapshotView[]>;
   restauracao: PedidoRestauracao | null;
+  /** Escolha de arquivos de uma versão (restauração seletiva). */
+  selecaoArquivos: { id: string } | null;
 
   carregarEstado(): Promise<void>;
   carregarBiblioteca(): Promise<void>;
@@ -71,6 +74,10 @@ export interface AppState {
   carregarHistorico(id: string): Promise<void>;
   iniciarRestauracao(id: string, arquivo: string, soArquivos?: { root: string; relPath: string }[]): void;
   cancelarRestauracao(): void;
+  marcarPendente(id: string, acao: "backup" | "restauracao" | null): void;
+  aposRestaurar(id: string, r: RestoreResultView): Promise<void>;
+  abrirSelecaoArquivos(id: string): void;
+  fecharSelecaoArquivos(): void;
   abrirDialogo(d: "adicionar"): void;
   fecharDialogo(): void;
   avisar(tipo: Toast["tipo"], texto: string): void;
@@ -119,6 +126,7 @@ export function createAppStore(backend: Backend) {
     dialogo: null,
     historicos: {},
     restauracao: null,
+    selecaoArquivos: null,
 
     async carregarEstado() {
       try {
@@ -237,6 +245,27 @@ export function createAppStore(backend: Backend) {
 
     cancelarRestauracao() {
       set({ restauracao: null });
+    },
+
+    marcarPendente(id, acao) {
+      const pendentes = { ...get().pendentes };
+      if (acao) pendentes[id] = acao;
+      else delete pendentes[id];
+      set({ pendentes });
+    },
+
+    async aposRestaurar(id, r) {
+      get().avisar("ok", r.safety ? T.restaurar.feitoComSeguranca : T.restaurar.feito);
+      await get().carregarBiblioteca();
+      if (get().painel?.id === id) await get().carregarHistorico(id);
+    },
+
+    abrirSelecaoArquivos(id) {
+      set({ selecaoArquivos: { id } });
+    },
+
+    fecharSelecaoArquivos() {
+      set({ selecaoArquivos: null });
     },
 
     abrirDialogo(d) {

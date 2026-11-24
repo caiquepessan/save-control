@@ -3,6 +3,8 @@ import { Sidebar } from "./components/Sidebar";
 import { TitleBar } from "./components/TitleBar";
 import { Toasts } from "./components/Toasts";
 import { GameDrawer } from "./components/drawer/GameDrawer";
+import { RestoreDialog } from "./components/flows/RestoreDialog";
+import { SelectFilesDialog } from "./components/flows/SelectFilesDialog";
 import { Library } from "./screens/Library";
 import { useApp } from "./store/app";
 import { T } from "./texto";
@@ -19,13 +21,18 @@ function Principal() {
 function Pronto() {
   const backend = useApp((s) => s.backend);
   const aplicarCapa = useApp((s) => s.aplicarCapa);
+  const avisar = useApp((s) => s.avisar);
   // Capas da Steam baixadas em segundo plano chegam por evento.
   useEffect(() => backend.aoReceberCapa(aplicarCapa), [backend, aplicarCapa]);
+  // A janela não fecha no meio de um backup ou restauração: avisa por quê.
+  useEffect(() => backend.aoBloquearFechar(() => avisar("info", T.restaurar.fecharBloqueado)), [backend, avisar]);
   return (
     <div className="corpo">
       <Sidebar />
       <Principal />
       <GameDrawer />
+      <RestoreDialog />
+      <SelectFilesDialog />
     </div>
   );
 }

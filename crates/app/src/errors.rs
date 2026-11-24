@@ -7,7 +7,7 @@ use crate::view::path_str;
 
 impl ErrorView {
     pub fn new(kind: ErrorKind, message: impl Into<String>) -> ErrorView {
-        ErrorView { kind, message: message.into(), root: None, candidates: Vec::new() }
+        ErrorView { kind, message: message.into(), root: None, alias: None, candidates: Vec::new() }
     }
 }
 
@@ -28,6 +28,7 @@ impl From<Error> for ErrorView {
                 kind: ErrorKind::PrecisaDestino,
                 message,
                 root: Some(root),
+                alias: None,
                 candidates: candidates.iter().map(|c| path_str(c)).collect(),
             },
             Error::VaultUnavailable(_) => ErrorView::new(ErrorKind::CofreIndisponivel, message),

@@ -1,11 +1,12 @@
 import { AlertTriangle, Download, Folder, FolderOpen, Info, MoreHorizontal, RotateCcw, X } from "lucide-react";
-import { useEffect, useRef, type KeyboardEvent as ReactKeyboardEvent } from "react";
+import { useCallback, useEffect, useRef, useState, type KeyboardEvent as ReactKeyboardEvent } from "react";
 import type { GameView } from "../../api/gerado/GameView";
 import { tamanho } from "../../lib/format";
 import { useApp, type Aba, type Painel } from "../../store/app";
 import { T } from "../../texto";
 import { Cover } from "../Cover";
 import { StatusPill } from "../StatusPill";
+import { BackupNamePopover } from "../flows/BackupNamePopover";
 import { FilesTab } from "./FilesTab";
 import { GameSettingsTab } from "./GameSettingsTab";
 import { HistoryTab } from "./HistoryTab";
@@ -64,9 +65,10 @@ function Conteudo({ jogo, painel }: { jogo: GameView; painel: Painel }) {
   const versoes = useApp((s) => s.historicos[jogo.id]);
   const aberto = useApp((s) => s.abertos.includes(jogo.id));
   const pendente = useApp((s) => s.pendentes[jogo.id]);
-  const restauracaoAberta = useApp((s) => s.restauracao !== null);
-  const fazerBackup = useApp((s) => s.fazerBackup);
+  const sobreposto = useApp((s) => s.restauracao !== null || s.selecaoArquivos !== null || s.dialogo !== null);
   const abrirPasta = useApp((s) => s.backend.abrirPasta);
+  const [nomeando, setNomeando] = useState(false);
+  const fecharNome = useCallback(() => setNomeando(false), []);
   const caixa = useRef<HTMLElement>(null);
   const botaoFechar = useRef<HTMLButtonElement>(null);
   const abas = useRef<Record<Aba, HTMLButtonElement | null>>({ historico: null, arquivos: null, ajustes: null });
@@ -74,22 +76,23 @@ function Conteudo({ jogo, painel }: { jogo: GameView; painel: Painel }) {
   // Foco entra no painel ao abrir e volta para onde estava ao fechar.
   useEffect(() => {
     const anterior = document.activeElement as HTMLElement | null;
-    botaoFechar.current?.focus();
-    return () => anterior?.focus();
+    // preventScroll: o painel ainda está deslizando para dentro da tela.
+    botaoFechar.current?.focus({ preventScroll: true });
+    return () => anterior?.focus({ preventScroll: true });
   }, [jogo.id]);
 
   useEffect(() => {
     void carregarHistorico(jogo.id);
   }, [jogo.id, carregarHistorico]);
 
-  // Esc fecha (a menos que a confirmação de restaurar esteja por cima).
+  // Esc fecha (a menos que um diálogo ou a caixa do nome estejam por cima).
   useEffect(() => {
     const aoTeclar = (e: KeyboardEvent) => {
-      if (e.key === "Escape" && !restauracaoAberta) fechar();
+      if (e.key === "Escape" && !sobreposto && !nomeando) fechar();
     };
     window.addEventListener("keydown", aoTeclar);
     return () => window.removeEventListener("keydown", aoTeclar);
-  }, [fechar, restauracaoAberta]);
+  }, [fechar, sobreposto, nomeando]);
 
   // O Tab não sai do painel enquanto ele está aberto.
   const prenderFoco = (e: ReactKeyboardEvent) => {
@@ -153,10 +156,19 @@ function Conteudo({ jogo, painel }: { jogo: GameView; painel: Painel }) {
 
         <div className="dact">
           {jogo.fileCount > 0 && !jogo.vaultOnly ? (
-            <button type="button" className="btn pri" disabled={!!pendente} onClick={() => void fazerBackup(jogo.id)}>
-              <Download className="ic" aria-hidden="true" />
-              {T.painel.fazerBackup}
-            </button>
+            <div className="dact-backup">
+              <button
+                type="button"
+                className="btn pri"
+                disabled={!!pendente}
+                aria-expanded={nomeando}
+                onClick={() => setNomeando((v) => !v)}
+              >
+                <Download className="ic" aria-hidden="true" />
+                {T.painel.fazerBackup}
+              </button>
+              {nomeando ? <BackupNamePopover id={jogo.id} onFechar={fecharNome} /> : null}
+            </div>
           ) : null}
           {jogo.backupCount > 0 ? (
             <button type="button" className="btn" onClick={() => definirAba("historico")}>

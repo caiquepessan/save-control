@@ -343,6 +343,24 @@ impl AppService {
             .collect())
     }
 
+    /// Em "precisa de destino", completa o erro com o alias da raiz (a primeira
+    /// com aquele template que ainda não tem destino escolhido).
+    fn with_alias(&self, id: &str, file: &str, targets: &BTreeMap<String, String>, mut e: ErrorView) -> ErrorView {
+        if e.kind != ErrorKind::PrecisaDestino {
+            return e;
+        }
+        if let (Some(engine), Some(root)) = (&self.engine, e.root.clone()) {
+            if let Ok(meta) = engine.snapshot_meta(id, file) {
+                e.alias = meta
+                    .roots
+                    .iter()
+                    .find(|r| r.template == root && !targets.contains_key(&r.alias))
+                    .map(|r| r.alias.clone());
+            }
+        }
+        e
+    }
+
     pub fn restore_preview(
         &mut self,
         id: &str,
@@ -350,7 +368,10 @@ impl AppService {
         targets: &BTreeMap<String, String>,
         probe: &dyn ProcessProbe,
     ) -> Res<RestorePreviewView> {
-        let p = self.engine()?.restore_preview(id, file, &to_paths(targets), probe)?;
+        let p = match self.engine()?.restore_preview(id, file, &to_paths(targets), probe) {
+            Ok(p) => p,
+            Err(e) => return Err(self.with_alias(id, file, targets, e.into())),
+        };
         Ok(RestorePreviewView {
             snapshot: self.snapshot(&p.entry),
             single_root: p.targets.len() == 1,
@@ -372,7 +393,10 @@ impl AppService {
             only: req.only_files.as_ref().map(|fs| fs.iter().map(|f| (f.root.clone(), f.rel_path.clone())).collect()),
             remember: req.remember,
         };
-        let report = self.engine()?.restore(id, file, &opts, probe)?;
+        let report = match self.engine()?.restore(id, file, &opts, probe) {
+            Ok(r) => r,
+            Err(e) => return Err(self.with_alias(id, file, &req.targets, e.into())),
+        };
         self.refresh_status(id);
         Ok(RestoreResultView {
             written: report.written,

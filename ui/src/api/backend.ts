@@ -71,6 +71,7 @@ export interface Backend {
 export class ErroApp extends Error {
   kind: ErrorKind;
   root: string | null;
+  alias: string | null;
   candidates: string[];
 
   constructor(v: ErrorView) {
@@ -78,6 +79,7 @@ export class ErroApp extends Error {
     this.name = "ErroApp";
     this.kind = v.kind;
     this.root = v.root;
+    this.alias = v.alias ?? null;
     this.candidates = v.candidates;
   }
 
@@ -85,7 +87,7 @@ export class ErroApp extends Error {
     if (e instanceof ErroApp) return e;
     if (e && typeof e === "object" && "kind" in e && "message" in e) return new ErroApp(e as ErrorView);
     const message = e instanceof Error ? e.message : String(e);
-    return new ErroApp({ kind: "erro", message, root: null, candidates: [] });
+    return new ErroApp({ kind: "erro", message, root: null, alias: null, candidates: [] });
   }
 }
 

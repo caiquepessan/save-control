@@ -12,6 +12,7 @@ const INTERVALO_ABERTOS = 10_000;
 
 /** Tela inicial: busca, filtros, aviso do topo e a grade de capas. */
 export function Library() {
+  const carregada = useApp((s) => s.biblioteca !== null);
   const jogos = useApp((s) => s.biblioteca?.games ?? NENHUM);
   const filtro = useApp((s) => s.filtro);
   const definirFiltro = useApp((s) => s.definirFiltro);
@@ -103,22 +104,28 @@ export function Library() {
 
       <AlertBanner />
 
-      <div className="hd">
-        <h2 className="t">{T.biblioteca.titulo}</h2>
-        <span className="s">{T.biblioteca.resumo(jogos.length, protegidos)}</span>
-      </div>
-
-      <div className="grade-rolagem">
-        {visiveis.length ? (
-          <div className="grade">
-            {visiveis.map((j) => (
-              <GameCard key={j.id} jogo={j} abertos={abertos} agora={agora} />
-            ))}
+      {carregada ? (
+        <>
+          <div className="hd">
+            <h2 className="t">{T.biblioteca.titulo}</h2>
+            <span className="s">{T.biblioteca.resumo(jogos.length, protegidos)}</span>
           </div>
-        ) : (
-          <p className="vazio">{jogos.length ? T.biblioteca.filtroVazio : T.biblioteca.vazia}</p>
-        )}
-      </div>
+
+          <div className="grade-rolagem">
+            {visiveis.length ? (
+              <div className="grade">
+                {visiveis.map((j) => (
+                  <GameCard key={j.id} jogo={j} abertos={abertos} agora={agora} />
+                ))}
+              </div>
+            ) : (
+              <p className="vazio">{jogos.length ? T.biblioteca.filtroVazio : T.biblioteca.vazia}</p>
+            )}
+          </div>
+        </>
+      ) : (
+        <p className="vazio">{T.biblioteca.carregando}</p>
+      )}
     </div>
   );
 }

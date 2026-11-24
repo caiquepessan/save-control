@@ -162,6 +162,7 @@ fn restauracao_pede_destino_e_lembra() {
     let err = svc.restore_preview(&g.id, &m.file_name, &BTreeMap::new(), &nenhum()).unwrap_err();
     assert_eq!(err.kind, ErrorKind::PrecisaDestino);
     assert_eq!(err.root.as_deref(), Some("<gameDir>/saves"));
+    assert_eq!(err.alias.as_deref(), Some("r0"), "a interface precisa saber qual raiz pede destino");
 
     let x = w.t.path().join("Escolhido");
     let pedido = RestoreRequest {

@@ -44,6 +44,7 @@ export const T = {
     resumo: (n: number, p: number) =>
       `${n} ${plural(n, "encontrado", "encontrados")} · ${p} ${plural(p, "protegido", "protegidos")} · ordenados pelo último save`,
     vazia: "Nenhum jogo encontrado ainda. Escaneie de novo ou adicione um jogo à mão.",
+    carregando: "Carregando sua biblioteca…",
     filtroVazio: "Nada aqui com esse filtro.",
     chips: {
       todos: "Todos",
@@ -94,6 +95,45 @@ export const T = {
   },
   toasts: {
     fechar: "Fechar aviso",
+  },
+  backupNome: {
+    titulo: "Fazer backup",
+    rotulo: "Nome (opcional)",
+    exemplo: "Ex.: antes de atualizar",
+    cancelar: "Cancelar",
+    confirmar: "Fazer backup",
+  },
+  restaurar: {
+    titulo: (versao: string) => `Restaurar "${versao}"?`,
+    corpo: (jogo: string, quando: string) =>
+      `O save do ${jogo} volta a como estava ${quando}. Antes disso, o save atual é guardado no cofre, então dá pra desfazer.`,
+    versao: "Versão",
+    arquivos: "Arquivos",
+    destino: "Destino",
+    algunsArquivos: (n: number, total: number) => `${n} de ${total} ${plural(total, "arquivo", "arquivos")}`,
+    jogoAberto: (nome: string) => `O jogo está aberto. Feche ${nome} antes de restaurar.`,
+    cancelar: "Cancelar",
+    confirmar: "Restaurar",
+    tentarDeNovo: "Tentar de novo",
+    outraPasta: "Restaurar em outra pasta…",
+    variasPastas: "Este backup tem várias pastas",
+    escolherPasta: "Escolher a pasta onde restaurar",
+    carregando: "Preparando…",
+    ondeTitulo: "Onde restaurar?",
+    ondeTexto: (template: string) =>
+      `Este backup veio de ${template} e há mais de um lugar possível neste PC (ou nenhum).`,
+    escolherOutra: "Escolher outra pasta…",
+    feito: "Restaurado.",
+    feitoComSeguranca: 'Restaurado. Seu save anterior está no histórico como "Antes de restaurar".',
+    fecharBloqueado: "Espere terminar: o Save Control não fecha no meio de um backup ou restauração.",
+  },
+  selecao: {
+    titulo: "Restaurar arquivos de uma versão",
+    abrir: "Restaurar arquivos de uma versão…",
+    versao: "Versão",
+    nenhum: "Esta versão não tem arquivos.",
+    cancelar: "Cancelar",
+    continuar: "Continuar",
   },
   painel: {
     fechar: "Fechar painel",

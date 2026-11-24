@@ -67,6 +67,8 @@
   grid-template-columns: 236px 1fr;
   min-height: 0;
   position: relative;
+  /* O painel entra deslizando de fora da tela: nada pode rolar para o lado. */
+  overflow: clip;
 }
 
 .lateral {

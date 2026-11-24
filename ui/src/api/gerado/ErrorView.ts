@@ -4,4 +4,12 @@ import type { ErrorKind } from "./ErrorKind";
 /**
  * Erro que a interface recebe (a `message` já vem em pt-BR).
  */
-export type ErrorView = { kind: ErrorKind, message: string, root: string | null, candidates: Array<string>, };
+export type ErrorView = { kind: ErrorKind, message: string, 
+/**
+ * Em `precisaDestino`: o template da raiz que precisa de destino…
+ */
+root: string | null, 
+/**
+ * …e o alias dela no backup (para a interface mandar o destino certo).
+ */
+alias: string | null, candidates: Array<string>, };
