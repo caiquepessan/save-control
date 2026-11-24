@@ -110,6 +110,7 @@ function criarJogos(agora: number): GameView[] {
       status: "semBackup",
       warnings: [{ kind: "dentroDaPastaDoJogo", detail: null }],
       gameDir: "D:\\Jogos\\Urso Recompiled",
+      rememberedTargets: [{ template: "<gameDir>/saves", path: "E:\\Saves\\Urso" }],
       ...raiz("D:\\Jogos\\Urso Recompiled\\saves", "<gameDir>/saves", [["save.bin", 512 * KB]], ha(41 * D)),
     }),
     base(IDS.estrela, "Estrela Saltitante 64", {

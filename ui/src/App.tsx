@@ -3,6 +3,7 @@ import { Sidebar } from "./components/Sidebar";
 import { TitleBar } from "./components/TitleBar";
 import { Toasts } from "./components/Toasts";
 import { GameDrawer } from "./components/drawer/GameDrawer";
+import { Dialogos } from "./components/flows/Dialogos";
 import { RestoreDialog } from "./components/flows/RestoreDialog";
 import { SelectFilesDialog } from "./components/flows/SelectFilesDialog";
 import { Library } from "./screens/Library";
@@ -33,6 +34,7 @@ function Pronto() {
       <GameDrawer />
       <RestoreDialog />
       <SelectFilesDialog />
+      <Dialogos />
     </div>
   );
 }

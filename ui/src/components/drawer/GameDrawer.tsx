@@ -1,10 +1,11 @@
-import { AlertTriangle, Download, Folder, FolderOpen, Info, MoreHorizontal, RotateCcw, X } from "lucide-react";
+import { AlertTriangle, Download, Folder, FolderOpen, Info, RotateCcw, X } from "lucide-react";
 import { useCallback, useEffect, useRef, useState, type KeyboardEvent as ReactKeyboardEvent } from "react";
 import type { GameView } from "../../api/gerado/GameView";
 import { tamanho } from "../../lib/format";
 import { useApp, type Aba, type Painel } from "../../store/app";
 import { T } from "../../texto";
 import { Cover } from "../Cover";
+import { Menu } from "../Menu";
 import { StatusPill } from "../StatusPill";
 import { BackupNamePopover } from "../flows/BackupNamePopover";
 import { FilesTab } from "./FilesTab";
@@ -67,6 +68,9 @@ function Conteudo({ jogo, painel }: { jogo: GameView; painel: Painel }) {
   const pendente = useApp((s) => s.pendentes[jogo.id]);
   const sobreposto = useApp((s) => s.restauracao !== null || s.selecaoArquivos !== null || s.dialogo !== null);
   const abrirPasta = useApp((s) => s.backend.abrirPasta);
+  const abrirDialogo = useApp((s) => s.abrirDialogo);
+  const trocarCapa = useApp((s) => s.trocarCapa);
+  const ignorar = useApp((s) => s.ignorar);
   const [nomeando, setNomeando] = useState(false);
   const fecharNome = useCallback(() => setNomeando(false), []);
   const caixa = useRef<HTMLElement>(null);
@@ -182,9 +186,17 @@ function Conteudo({ jogo, painel }: { jogo: GameView; painel: Painel }) {
               <Folder className="ic" aria-hidden="true" />
             </button>
           ) : null}
-          <button type="button" className="ibtn" aria-label={T.painel.maisAcoes} title={T.painel.maisAcoes}>
-            <MoreHorizontal className="ic" aria-hidden="true" />
-          </button>
+          <Menu
+            rotulo={T.painel.maisAcoes}
+            itens={[
+              { rotulo: T.menuJogo.renomear, acao: () => abrirDialogo({ tipo: "renomear", id: jogo.id }) },
+              { rotulo: T.menuJogo.trocarCapa, acao: () => void trocarCapa(jogo.id) },
+              { rotulo: T.menuJogo.ignorar, acao: () => void ignorar(jogo.id) },
+              ...(jogo.isCustom
+                ? [{ rotulo: T.menuJogo.remover, acao: () => abrirDialogo({ tipo: "remover", id: jogo.id }), perigo: true }]
+                : []),
+            ]}
+          />
         </div>
 
         <Avisos jogo={jogo} />

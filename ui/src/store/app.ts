@@ -3,6 +3,7 @@
 import { createContext, createElement, useContext, type ReactNode } from "react";
 import { createStore, useStore } from "zustand";
 import { ErroApp, type Backend } from "../api/backend";
+import type { AddGameRequest } from "../api/gerado/AddGameRequest";
 import type { AppStateView } from "../api/gerado/AppStateView";
 import type { GameView } from "../api/gerado/GameView";
 import type { LibraryView } from "../api/gerado/LibraryView";
@@ -29,6 +30,8 @@ export interface Painel {
   modoRestaurar: boolean;
 }
 
+export type Dialogo = { tipo: "adicionar" } | { tipo: "renomear"; id: string } | { tipo: "remover"; id: string };
+
 /** Uma restauração pedida (a confirmação é desenhada a partir disto). */
 export interface PedidoRestauracao {
   id: string;
@@ -50,8 +53,8 @@ export interface AppState {
   pendentes: Record<string, "backup" | "restauracao">;
   toasts: Toast[];
   painel: Painel | null;
-  /** Diálogo aberto por cima de tudo (o de adicionar jogo entra na Task 11). */
-  dialogo: "adicionar" | null;
+  /** Diálogo aberto por cima de tudo (adicionar, renomear, remover). */
+  dialogo: Dialogo | null;
   /** Histórico de cada jogo já carregado (do mais novo ao mais velho). */
   historicos: Record<string, SnapshotView[]>;
   restauracao: PedidoRestauracao | null;
@@ -78,8 +81,16 @@ export interface AppState {
   aposRestaurar(id: string, r: RestoreResultView): Promise<void>;
   abrirSelecaoArquivos(id: string): void;
   fecharSelecaoArquivos(): void;
-  abrirDialogo(d: "adicionar"): void;
+  abrirDialogo(d: Dialogo): void;
   fecharDialogo(): void;
+  /** Devolve a mensagem de erro (para o diálogo mostrar) ou null se deu certo. */
+  adicionarJogo(pedido: AddGameRequest): Promise<string | null>;
+  renomear(id: string, titulo: string | null): Promise<void>;
+  ignorar(id: string): Promise<void>;
+  remover(id: string): Promise<void>;
+  trocarCapa(id: string): Promise<void>;
+  definirPastaDoJogo(id: string, pasta: string | null): Promise<void>;
+  esquecerDestino(id: string, template: string): Promise<void>;
   avisar(tipo: Toast["tipo"], texto: string): void;
   fecharToast(id: number): void;
 }
@@ -107,6 +118,18 @@ export function createAppStore(backend: Backend) {
         get().avisar("erro", ErroApp.de(e).message);
       } finally {
         set({ backupGeral: false });
+      }
+    }
+
+    /** Ajuste de um jogo: chama o app e recarrega a biblioteca; erro vira aviso. */
+    async function acaoNoJogo(f: () => Promise<void>): Promise<boolean> {
+      try {
+        await f();
+        await get().carregarBiblioteca();
+        return true;
+      } catch (e) {
+        get().avisar("erro", ErroApp.de(e).message);
+        return false;
       }
     }
 
@@ -274,6 +297,48 @@ export function createAppStore(backend: Backend) {
 
     fecharDialogo() {
       set({ dialogo: null });
+    },
+
+    async adicionarJogo(pedido) {
+      try {
+        const novo = await backend.adicionarJogo(pedido);
+        get().fecharDialogo();
+        get().avisar("ok", T.adicionar.adicionado(novo.title));
+        await get().carregarBiblioteca();
+        return null;
+      } catch (e) {
+        return ErroApp.de(e).message;
+      }
+    },
+
+    async renomear(id, titulo) {
+      await acaoNoJogo(() => backend.renomearJogo(id, titulo));
+    },
+
+    async ignorar(id) {
+      const titulo = get().biblioteca?.games.find((g) => g.id === id)?.title ?? id;
+      const ok = await acaoNoJogo(() => backend.ignorarJogo(id, true));
+      if (!ok) return;
+      if (get().painel?.id === id) get().fecharPainel();
+      get().avisar("info", T.ajustesJogo.ignorado(titulo));
+    },
+
+    async remover(id) {
+      if (get().painel?.id === id) get().fecharPainel();
+      await acaoNoJogo(() => backend.removerJogoManual(id));
+    },
+
+    async trocarCapa(id) {
+      const arquivo = await backend.escolherImagem();
+      if (arquivo) await acaoNoJogo(() => backend.definirCapa(id, arquivo));
+    },
+
+    async definirPastaDoJogo(id, pasta) {
+      await acaoNoJogo(() => backend.definirPastaDoJogo(id, pasta));
+    },
+
+    async esquecerDestino(id, template) {
+      await acaoNoJogo(() => backend.esquecerDestino(id, template));
     },
 
     avisar(tipo, texto) {

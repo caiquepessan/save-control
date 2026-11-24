@@ -74,7 +74,7 @@ export function Library() {
           <ScanLine className={escaneando ? "ic girando" : "ic"} aria-hidden="true" />
           {escaneando ? T.biblioteca.escaneando : T.biblioteca.escanear}
         </button>
-        <button type="button" className="btn" onClick={() => abrirDialogo("adicionar")}>
+        <button type="button" className="btn" onClick={() => abrirDialogo({ tipo: "adicionar" })}>
           <Plus className="ic" aria-hidden="true" />
           {T.biblioteca.adicionar}
         </button>
