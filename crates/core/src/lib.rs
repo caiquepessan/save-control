@@ -17,5 +17,6 @@ pub mod registry;
 pub mod scan;
 pub mod status;
 pub mod stores;
+pub mod targets;
 pub mod templatize;
 pub mod vault;

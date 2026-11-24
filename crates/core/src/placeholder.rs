@@ -143,6 +143,11 @@ fn placeholder_names(comps: &[String]) -> Vec<String> {
     names
 }
 
+/// Nomes dos placeholders que aparecem num template (sem repetir).
+pub(crate) fn names_in(template: &str) -> Vec<String> {
+    placeholder_names(&components(template))
+}
+
 /// Expande um template da base para cada combinação possível neste PC.
 pub fn expand(template: &str, ctx: &ExpandCtx) -> Vec<Expansion> {
     let comps = components(template);
