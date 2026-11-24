@@ -3,6 +3,7 @@
 pub mod backup;
 pub mod catalog;
 pub mod custom;
+pub mod engine;
 pub mod env;
 pub mod error;
 pub mod fingerprint;
