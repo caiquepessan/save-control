@@ -1,0 +1,28 @@
+Jogo A:
+  files:
+    <winAppData>/JogoA/saves:
+      tags: [save]
+      when: [{os: windows}]
+    <base>/Config.ini:
+      tags: [config]
+  installDir:
+    JogoA: {}
+  steam:
+    id: 1000
+  cloud:
+    steam: true
+  registry:
+    HKEY_CURRENT_USER/Software/JogoA:
+      tags: [save]
+  futureField: 1
+Jogo B:
+  files:
+    <winDocuments>/JogoB/settings.cfg:
+      tags: [config]
+Jogo C:
+  alias: Jogo A
+Jogo D:
+  files:
+    <home>/.jogod/save:
+      tags: [save]
+      when: [{os: linux}, {os: plan9}]
