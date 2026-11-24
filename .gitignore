@@ -1,1 +1,6 @@
 /target
+
+# interface (Node/Vite) e arquivos gerados pelo Tauri
+node_modules/
+dist/
+src-tauri/gen/

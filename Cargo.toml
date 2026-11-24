@@ -1,5 +1,7 @@
 [workspace]
-members = ["crates/core", "crates/cli"]
+members = ["crates/core", "crates/cli", "crates/app"]
+# O app Tauri (src-tauri) precisa da interface compilada; fica fora do `cargo test` padrão.
+default-members = ["crates/core", "crates/cli", "crates/app"]
 resolver = "3"
 
 [workspace.package]
