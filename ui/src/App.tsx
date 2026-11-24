@@ -1,6 +1,8 @@
 import { useEffect } from "react";
 import { Sidebar } from "./components/Sidebar";
 import { TitleBar } from "./components/TitleBar";
+import { Toasts } from "./components/Toasts";
+import { Library } from "./screens/Library";
 import { useApp } from "./store/app";
 import { T } from "./texto";
 
@@ -8,12 +10,16 @@ function Principal() {
   const tela = useApp((s) => s.tela);
   return (
     <main className="principal">
-      <section aria-label={tela === "biblioteca" ? T.menu.biblioteca : T.menu.configuracoes} />
+      {tela === "biblioteca" ? <Library /> : <section aria-label={T.menu.configuracoes} />}
     </main>
   );
 }
 
 function Pronto() {
+  const backend = useApp((s) => s.backend);
+  const aplicarCapa = useApp((s) => s.aplicarCapa);
+  // Capas da Steam baixadas em segundo plano chegam por evento.
+  useEffect(() => backend.aoReceberCapa(aplicarCapa), [backend, aplicarCapa]);
   return (
     <div className="corpo">
       <Sidebar />
@@ -42,6 +48,7 @@ export function App() {
     <div className="app">
       <TitleBar />
       {conteudo}
+      <Toasts />
     </div>
   );
 }
