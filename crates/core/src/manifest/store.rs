@@ -1,11 +1,12 @@
 //! Cache e atualização diária da base de jogos.
 
 use std::io::Read;
-use std::path::{Path, PathBuf};
+use std::path::PathBuf;
 
 use chrono::{DateTime, Duration, Utc};
 
 use crate::error::{Error, Result, io};
+use crate::fsutil::write_atomic;
 use crate::manifest::Manifest;
 
 pub const MANIFEST_URL: &str =
@@ -129,14 +130,3 @@ impl ManifestStore {
     }
 }
 
-/// Grava num temporário ao lado e renomeia por cima.
-pub(crate) fn write_atomic(path: &Path, bytes: &[u8]) -> Result<()> {
-    if let Some(parent) = path.parent() {
-        std::fs::create_dir_all(parent).map_err(io(parent))?;
-    }
-    let mut tmp = path.as_os_str().to_owned();
-    tmp.push(".tmp");
-    let tmp = PathBuf::from(tmp);
-    std::fs::write(&tmp, bytes).map_err(io(&tmp))?;
-    std::fs::rename(&tmp, path).map_err(io(path))
-}
