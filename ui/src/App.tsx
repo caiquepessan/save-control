@@ -2,6 +2,7 @@ import { useEffect } from "react";
 import { Sidebar } from "./components/Sidebar";
 import { TitleBar } from "./components/TitleBar";
 import { Toasts } from "./components/Toasts";
+import { GameDrawer } from "./components/drawer/GameDrawer";
 import { Library } from "./screens/Library";
 import { useApp } from "./store/app";
 import { T } from "./texto";
@@ -24,6 +25,7 @@ function Pronto() {
     <div className="corpo">
       <Sidebar />
       <Principal />
+      <GameDrawer />
     </div>
   );
 }

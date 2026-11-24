@@ -6,6 +6,7 @@ import { ErroApp, type Backend } from "../api/backend";
 import type { AppStateView } from "../api/gerado/AppStateView";
 import type { GameView } from "../api/gerado/GameView";
 import type { LibraryView } from "../api/gerado/LibraryView";
+import type { SnapshotView } from "../api/gerado/SnapshotView";
 import { FILTRO_INICIAL, type Filtro } from "../lib/library";
 import { T } from "../texto";
 
@@ -27,6 +28,14 @@ export interface Painel {
   modoRestaurar: boolean;
 }
 
+/** Uma restauração pedida (a confirmação é desenhada a partir disto). */
+export interface PedidoRestauracao {
+  id: string;
+  arquivo: string;
+  /** Só estes arquivos (restauração seletiva). */
+  soArquivos?: { root: string; relPath: string }[];
+}
+
 export interface AppState {
   backend: Backend;
   estado: AppStateView | null;
@@ -42,6 +51,9 @@ export interface AppState {
   painel: Painel | null;
   /** Diálogo aberto por cima de tudo (o de adicionar jogo entra na Task 11). */
   dialogo: "adicionar" | null;
+  /** Histórico de cada jogo já carregado (do mais novo ao mais velho). */
+  historicos: Record<string, SnapshotView[]>;
+  restauracao: PedidoRestauracao | null;
 
   carregarEstado(): Promise<void>;
   carregarBiblioteca(): Promise<void>;
@@ -55,6 +67,10 @@ export interface AppState {
   aplicarCapa(id: string, caminho: string): void;
   abrirPainel(id: string, opcoes?: { aba?: Aba; modoRestaurar?: boolean }): void;
   fecharPainel(): void;
+  definirAba(aba: Aba): void;
+  carregarHistorico(id: string): Promise<void>;
+  iniciarRestauracao(id: string, arquivo: string, soArquivos?: { root: string; relPath: string }[]): void;
+  cancelarRestauracao(): void;
   abrirDialogo(d: "adicionar"): void;
   fecharDialogo(): void;
   avisar(tipo: Toast["tipo"], texto: string): void;
@@ -101,6 +117,8 @@ export function createAppStore(backend: Backend) {
     toasts: [],
     painel: null,
     dialogo: null,
+    historicos: {},
+    restauracao: null,
 
     async carregarEstado() {
       try {
@@ -155,6 +173,7 @@ export function createAppStore(backend: Backend) {
         else if (r.outcome === "semMudanca") get().avisar("info", T.backup.semMudanca(titulo));
         else get().avisar("info", T.backup.semArquivos(titulo));
         await get().carregarBiblioteca();
+        if (get().painel?.id === id) await get().carregarHistorico(id);
       } catch (e) {
         get().avisar("erro", ErroApp.de(e).message);
       } finally {
@@ -196,6 +215,28 @@ export function createAppStore(backend: Backend) {
 
     fecharPainel() {
       set({ painel: null });
+    },
+
+    definirAba(aba) {
+      const p = get().painel;
+      if (p) set({ painel: { ...p, aba, modoRestaurar: aba === "historico" ? p.modoRestaurar : false } });
+    },
+
+    async carregarHistorico(id) {
+      try {
+        const lista = await backend.historico(id);
+        set({ historicos: { ...get().historicos, [id]: lista } });
+      } catch (e) {
+        get().avisar("erro", ErroApp.de(e).message);
+      }
+    },
+
+    iniciarRestauracao(id, arquivo, soArquivos) {
+      set({ restauracao: { id, arquivo, soArquivos } });
+    },
+
+    cancelarRestauracao() {
+      set({ restauracao: null });
     },
 
     abrirDialogo(d) {

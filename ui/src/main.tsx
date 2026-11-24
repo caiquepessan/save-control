@@ -10,6 +10,7 @@ import "./styles/tokens.css";
 import "./styles/base.css";
 import "./styles/app.css";
 import "./styles/biblioteca.css";
+import "./styles/painel.css";
 
 import { StrictMode } from "react";
 import { createRoot } from "react-dom/client";
