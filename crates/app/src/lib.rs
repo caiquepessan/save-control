@@ -6,5 +6,6 @@ pub mod covers;
 pub mod dto;
 pub mod errors;
 pub mod paths;
+pub mod service;
 pub mod texts;
 pub mod view;
