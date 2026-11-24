@@ -1,5 +1,6 @@
 //! Núcleo do Save Control: encontrar saves, guardar no cofre e restaurar.
 
+pub mod backup;
 pub mod catalog;
 pub mod custom;
 pub mod env;
@@ -14,6 +15,7 @@ pub mod model;
 pub mod placeholder;
 pub mod registry;
 pub mod scan;
+pub mod status;
 pub mod stores;
 pub mod templatize;
 pub mod vault;
