@@ -3,5 +3,8 @@
 
 pub mod config;
 pub mod covers;
+pub mod dto;
+pub mod errors;
 pub mod paths;
 pub mod texts;
+pub mod view;
