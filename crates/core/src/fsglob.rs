@@ -5,7 +5,7 @@ use std::path::{Path, PathBuf};
 use chrono::{DateTime, Utc};
 
 use crate::env::SystemPaths;
-use crate::placeholder::{Expansion, slash};
+use crate::placeholder::{Expansion, normalize, slash};
 
 #[derive(Clone, Debug, PartialEq)]
 pub struct FoundFile {
@@ -34,7 +34,7 @@ pub enum FindResult {
 }
 
 fn norm(p: &Path) -> String {
-    slash(p).to_lowercase()
+    normalize(&slash(p)).to_lowercase()
 }
 
 /// Raiz de disco ou uma das pastas grandes do Windows: nunca é raiz de save.
@@ -43,6 +43,8 @@ pub fn is_broad_path(path: &Path, sys: &SystemPaths) -> bool {
     if p.len() == 2 && p.ends_with(':') {
         return true;
     }
+    // Pastas que juntam muitos programas ou muitos jogos.
+    let hubs = [sys.home.join("AppData"), sys.documents.join("My Games")];
     [
         &sys.home,
         &sys.app_data,
@@ -58,6 +60,8 @@ pub fn is_broad_path(path: &Path, sys: &SystemPaths) -> bool {
         &sys.downloads,
         &sys.desktop,
         &sys.temp,
+        &hubs[0],
+        &hubs[1],
     ]
     .iter()
     .any(|b| norm(b) == p)

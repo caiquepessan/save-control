@@ -31,6 +31,12 @@ pub enum Error {
     VerifyFailed(PathBuf),
     #[error("Não encontrado: {0}")]
     NotFound(String),
+    #[error("Isto foi criado por uma versão mais nova do Save Control (formato {found}, esta versão lê até o {supported}). Atualize o app")]
+    FormatTooNew { found: u32, supported: u32 },
+    #[error("Restauração recusada: {0}")]
+    UnsafeRestore(String),
+    #[error("A restauração falhou ({cause}) e não foi possível desfazer tudo. O save de antes está guardado no cofre em {safety}")]
+    RollbackFailed { cause: String, safety: String },
 }
 
 /// Adaptador para `map_err`: `fs::read(&p).map_err(io(&p))?`.

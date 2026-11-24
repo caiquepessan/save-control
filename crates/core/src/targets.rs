@@ -12,7 +12,8 @@ pub struct TargetCtx<'a> {
     pub sys: &'a SystemPaths,
     pub installs: Vec<InstallCandidate>,
     pub store_user_ids: Vec<String>,
-    pub game_dir: Option<PathBuf>,
+    /// Pastas do jogo neste PC (uma por instalação encontrada).
+    pub game_dirs: Vec<PathBuf>,
     /// Escolhas anteriores deste PC: template da raiz → pasta.
     pub remembered: &'a BTreeMap<String, PathBuf>,
 }
@@ -59,15 +60,19 @@ fn resolve_one(r: &SnapshotRoot, ctx: &TargetCtx) -> Result<PathBuf> {
     } else {
         vec![None]
     };
-    let game_dir = if uses("gameDir") { ctx.game_dir.as_ref().map(|g| slash(g)) } else { None };
+    let dirs: Vec<Option<String>> = if uses("gameDir") {
+        ctx.game_dirs.iter().map(|g| Some(slash(g))).collect()
+    } else {
+        vec![None]
+    };
 
-    let bindings_for = |i: &Option<InstallCandidate>, u: &Option<String>| {
+    let bindings_for = |i: &Option<InstallCandidate>, u: &Option<String>, d: &Option<String>| {
         let mut b = i.as_ref().map(install_bindings).unwrap_or_default();
         if let Some(u) = u {
             b.insert("storeUserId".to_string(), u.clone());
         }
-        if let Some(gd) = &game_dir {
-            b.insert("gameDir".to_string(), gd.clone());
+        if let Some(d) = d {
+            b.insert("gameDir".to_string(), d.clone());
         }
         b
     };
@@ -77,18 +82,18 @@ fn resolve_one(r: &SnapshotRoot, ctx: &TargetCtx) -> Result<PathBuf> {
         i.as_ref().is_some_and(|i| Some(slash(&i.base).to_lowercase()) == orig("base"))
     });
     let user = pick(&users, |u| u.as_ref().map(|u| u.to_lowercase()) == orig("storeUserId"));
-    let game_dir_ok = !uses("gameDir") || game_dir.is_some();
+    let dir = pick(&dirs, |d| d.as_ref().map(|d| d.to_lowercase()) == orig("gameDir"));
 
-    if let (Some(i), Some(u), true) = (&install, &user, game_dir_ok) {
-        if let Some(p) = resolve_root(&r.template, ctx.sys, &bindings_for(i, u)) {
+    if let (Some(i), Some(u), Some(d)) = (&install, &user, &dir) {
+        if let Some(p) = resolve_root(&r.template, ctx.sys, &bindings_for(i, u, d)) {
             return Ok(p);
         }
     }
     let mut candidates = Vec::new();
-    if game_dir_ok {
-        for i in &installs {
-            for u in &users {
-                if let Some(p) = resolve_root(&r.template, ctx.sys, &bindings_for(i, u)) {
+    for i in &installs {
+        for u in &users {
+            for d in &dirs {
+                if let Some(p) = resolve_root(&r.template, ctx.sys, &bindings_for(i, u, d)) {
                     candidates.push(p);
                 }
             }
@@ -103,16 +108,25 @@ pub fn resolve_targets(
     ctx: &TargetCtx,
     overrides: &BTreeMap<String, PathBuf>,
 ) -> Result<Vec<(String, PathBuf)>> {
-    meta.roots
-        .iter()
-        .map(|r| {
-            if let Some(p) = overrides.get(&r.alias) {
-                return Ok((r.alias.clone(), p.clone()));
-            }
-            if let Some(p) = ctx.remembered.get(&r.template) {
-                return Ok((r.alias.clone(), p.clone()));
-            }
-            resolve_one(r, ctx).map(|p| (r.alias.clone(), p))
-        })
-        .collect()
+    let mut out: Vec<(String, PathBuf)> = Vec::new();
+    for r in &meta.roots {
+        if let Some(p) = overrides.get(&r.alias) {
+            out.push((r.alias.clone(), p.clone()));
+            continue;
+        }
+        let p = match ctx.remembered.get(&r.template) {
+            Some(p) => p.clone(),
+            None => resolve_one(r, ctx)?,
+        };
+        // Duas raízes diferentes do backup nunca caem, em silêncio, na mesma pasta
+        // (ex.: saves de duas contas da Steam num PC que só tem uma).
+        let dup = out
+            .iter()
+            .any(|(a, q)| !overrides.contains_key(a) && slash(q).eq_ignore_ascii_case(&slash(&p)));
+        if dup {
+            return Err(Error::NeedsTarget { root: r.template.clone(), candidates: vec![p] });
+        }
+        out.push((r.alias.clone(), p));
+    }
+    Ok(out)
 }

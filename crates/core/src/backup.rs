@@ -61,6 +61,7 @@ pub fn backup_game(
             source: game.source.clone(),
             custom: game.custom.clone(),
             steam_app_id: game.steam_app_id,
+            process_names: game.process_names.clone(),
         },
     )?;
 

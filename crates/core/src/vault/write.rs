@@ -17,6 +17,8 @@ use crate::vault::format::{SnapshotFile, SnapshotMeta};
 pub trait CopyHooks {
     fn wait_before_retry(&self) {}
     fn after_read(&self, _path: &Path) {}
+    /// Chamado logo antes de desfazer uma restauração que falhou.
+    fn before_rollback(&self) {}
 }
 
 /// Espera 2 s entre tentativas.
@@ -123,20 +125,33 @@ fn unique_path(dir: &Path, file_name: &str) -> PathBuf {
     unreachable!()
 }
 
-fn write_zip(partial: &Path, meta: &SnapshotMeta, sources: &[SourceFile], contents: &[Content]) -> Result<()> {
+/// Grava o zip lendo e gravando um arquivo por vez; os metadados vão no fim,
+/// quando os hashes já são conhecidos.
+fn write_zip(partial: &Path, mut meta: SnapshotMeta, sources: &[SourceFile], hooks: &dyn CopyHooks) -> Result<SnapshotMeta> {
     let file = File::create(partial).map_err(io(partial))?;
     let mut zw = zip::ZipWriter::new(file);
     let opts = SimpleFileOptions::default().compression_method(CompressionMethod::Deflated);
-    let meta_json = serde_json::to_vec_pretty(meta).map_err(|e| Error::Parse(e.to_string()))?;
-    zw.start_file(META_ENTRY, opts).map_err(zip_err)?;
-    zw.write_all(&meta_json).map_err(io(partial))?;
-    for (s, c) in sources.iter().zip(contents) {
+    let mut files = Vec::with_capacity(sources.len());
+    for s in sources {
+        let c = read_stable(&s.abs_path, hooks)?;
         let large = c.bytes.len() as u64 >= u64::from(u32::MAX);
         zw.start_file(entry_name(&s.root_alias, &s.rel_path), opts.large_file(large)).map_err(zip_err)?;
         zw.write_all(&c.bytes).map_err(io(partial))?;
+        files.push(SnapshotFile {
+            root: s.root_alias.clone(),
+            rel_path: s.rel_path.clone(),
+            size: c.bytes.len() as u64,
+            modified: c.modified,
+            blake3: blake3::hash(&c.bytes).to_hex().to_string(),
+        });
     }
+    meta.files = files;
+    let meta_json = serde_json::to_vec_pretty(&meta).map_err(|e| Error::Parse(e.to_string()))?;
+    zw.start_file(META_ENTRY, opts).map_err(zip_err)?;
+    zw.write_all(&meta_json).map_err(io(partial))?;
     let file = zw.finish().map_err(zip_err)?;
-    file.sync_all().map_err(io(partial))
+    file.sync_all().map_err(io(partial))?;
+    Ok(meta)
 }
 
 /// Relê o zip: CRC de cada entrada (conferido pela leitura) e BLAKE3 contra o meta.
@@ -152,9 +167,16 @@ fn verify_zip(partial: &Path, meta: &SnapshotMeta) -> Result<()> {
     }
     for f in &meta.files {
         let mut entry = ar.by_name(&entry_name(&f.root, &f.rel_path)).map_err(zip_err)?;
-        let mut buf = Vec::with_capacity(f.size as usize);
-        entry.read_to_end(&mut buf).map_err(|_| Error::VerifyFailed(partial.to_path_buf()))?;
-        if blake3::hash(&buf).to_hex().as_str() != f.blake3 {
+        let mut hasher = blake3::Hasher::new();
+        let mut buf = [0u8; 64 * 1024];
+        loop {
+            let n = entry.read(&mut buf).map_err(|_| Error::VerifyFailed(partial.to_path_buf()))?;
+            if n == 0 {
+                break;
+            }
+            hasher.update(&buf[..n]);
+        }
+        if hasher.finalize().to_hex().as_str() != f.blake3 {
             return Err(Error::VerifyFailed(partial.to_path_buf()));
         }
     }
@@ -166,7 +188,7 @@ fn verify_zip(partial: &Path, meta: &SnapshotMeta) -> Result<()> {
 pub fn write_snapshot(
     game_dir: &Path,
     file_name: &str,
-    mut meta: SnapshotMeta,
+    meta: SnapshotMeta,
     sources: &[SourceFile],
     hooks: &dyn CopyHooks,
 ) -> Result<(PathBuf, SnapshotMeta)> {
@@ -178,27 +200,18 @@ pub fn write_snapshot(
         }
     }
 
-    let contents = sources.iter().map(|s| read_stable(&s.abs_path, hooks)).collect::<Result<Vec<_>>>()?;
-    meta.files = sources
-        .iter()
-        .zip(&contents)
-        .map(|(s, c)| SnapshotFile {
-            root: s.root_alias.clone(),
-            rel_path: s.rel_path.clone(),
-            size: c.bytes.len() as u64,
-            modified: c.modified,
-            blake3: blake3::hash(&c.bytes).to_hex().to_string(),
-        })
-        .collect();
-
     let final_path = unique_path(game_dir, file_name);
     let partial = with_suffix(&final_path, PARTIAL_SUFFIX);
-    let result = write_zip(&partial, &meta, sources, &contents)
-        .and_then(|()| verify_zip(&partial, &meta))
-        .and_then(|()| std::fs::rename(&partial, &final_path).map_err(io(&final_path)));
-    if let Err(e) = result {
-        let _ = std::fs::remove_file(&partial);
-        return Err(e);
+    let result = write_zip(&partial, meta, sources, hooks).and_then(|meta| {
+        verify_zip(&partial, &meta)?;
+        std::fs::rename(&partial, &final_path).map_err(io(&final_path))?;
+        Ok(meta)
+    });
+    match result {
+        Ok(meta) => Ok((final_path, meta)),
+        Err(e) => {
+            let _ = std::fs::remove_file(&partial);
+            Err(e)
+        }
     }
-    Ok((final_path, meta))
 }

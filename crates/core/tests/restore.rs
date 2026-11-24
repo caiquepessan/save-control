@@ -99,7 +99,7 @@ fn restaurar(
 ) -> Result<RestoreReport, Error> {
     let policy = RetentionPolicy::default();
     let lembrado = BTreeMap::new();
-    let alvo = TargetCtx { sys: &w.s, installs: vec![], store_user_ids: vec![], game_dir: None, remembered: &lembrado };
+    let alvo = TargetCtx { sys: &w.s, installs: vec![], store_user_ids: vec![], game_dirs: vec![], remembered: &lembrado };
     let mut ctx = BackupCtx {
         vault: &w.vault,
         index: &mut w.index,

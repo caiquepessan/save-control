@@ -43,7 +43,8 @@ fn libraries(root: &Path) -> Vec<PathBuf> {
     libs
 }
 
-fn apps_in(lib: &Path) -> Vec<InstalledGame> {
+/// `root` é a instalação da Steam (onde fica `userdata`), não a biblioteca.
+fn apps_in(root: &Path, lib: &Path) -> Vec<InstalledGame> {
     let Ok(dir) = std::fs::read_dir(lib.join("steamapps")) else { return Vec::new() };
     let mut games = Vec::new();
     for entry in dir.flatten() {
@@ -61,7 +62,7 @@ fn apps_in(lib: &Path) -> Vec<InstalledGame> {
         };
         games.push(InstalledGame {
             store: Store::Steam,
-            root: lib.to_path_buf(),
+            root: root.to_path_buf(),
             folder_name: dir_name.to_string(),
             base: lib.join("steamapps").join("common").join(dir_name),
             store_game_id: Some(id.to_string()),
@@ -86,6 +87,6 @@ fn user_ids(root: &Path) -> Vec<String> {
 /// Lê uma instalação da Steam. Arquivos ilegíveis são pulados, não derrubam a leitura.
 pub fn read_steam(root: &Path) -> Result<SteamInfo> {
     let libraries = libraries(root);
-    let games = libraries.iter().flat_map(|l| apps_in(l)).collect();
+    let games = libraries.iter().flat_map(|l| apps_in(root, l)).collect();
     Ok(SteamInfo { root: root.to_path_buf(), user_ids: user_ids(root), libraries, games })
 }

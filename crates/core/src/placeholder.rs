@@ -49,6 +49,27 @@ pub(crate) fn slash(p: &Path) -> String {
     s.trim_end_matches('/').to_string()
 }
 
+/// Tira `.` e resolve `..` sem tocar no disco (`C:/a/./b/../c` → `C:/a/c`).
+/// Nunca sobe acima da raiz do disco.
+pub(crate) fn normalize(path: &str) -> String {
+    let mut out: Vec<&str> = Vec::new();
+    for (i, c) in path.split('/').enumerate() {
+        match c {
+            "" if i > 1 => {}
+            "." if i > 0 => {}
+            ".." => match out.last() {
+                None | Some(&"..") => out.push(".."),
+                Some(l) if l.is_empty() || l.ends_with(':') => {}
+                Some(_) => {
+                    out.pop();
+                }
+            },
+            _ => out.push(c),
+        }
+    }
+    out.join("/")
+}
+
 fn system_value(name: &str, sys: &SystemPaths) -> Option<String> {
     let p = match name {
         "home" => &sys.home,
@@ -238,7 +259,7 @@ pub fn expand(template: &str, ctx: &ExpandCtx) -> Vec<Expansion> {
             let exp = Expansion {
                 root_template: root_tmpl.join("/"),
                 bindings,
-                root_path: PathBuf::from(root_real.join("/")),
+                root_path: PathBuf::from(normalize(&root_real.join("/"))),
                 tail_glob: if tail.is_empty() { None } else { Some(tail.join("/")) },
             };
             let key = |e: &Expansion| (slash(&e.root_path).to_lowercase(), e.tail_glob.clone());
@@ -272,5 +293,5 @@ pub fn resolve_root(
         }
         parts.push(real);
     }
-    Some(PathBuf::from(parts.join("/")))
+    Some(PathBuf::from(normalize(&parts.join("/"))))
 }

@@ -121,6 +121,7 @@ fn pastas_de_jogos_diferentes_com_mesmo_nome() {
             source: GameSource::ManifestOnly,
             custom: None,
             steam_app_id: None,
+            process_names: vec![],
         },
     )
     .unwrap();

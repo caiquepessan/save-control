@@ -1,7 +1,7 @@
 //! Escaneamento: junta base de PC, catálogo e jogos à mão numa lista de jogos.
 
 use std::collections::BTreeMap;
-use std::path::Path;
+use std::path::{Path, PathBuf};
 
 use rayon::prelude::*;
 
@@ -165,27 +165,39 @@ fn stem_of(rel_path: &str) -> String {
     Path::new(name).file_stem().map(|s| s.to_string_lossy().into_owned()).unwrap_or_default()
 }
 
-fn catalog_games(input: &ScanInput, cm: &CatalogMatch, duplicated: bool) -> Vec<Game> {
-    let ctx = ExpandCtx {
-        sys: input.sys,
-        installs: &[],
-        store_user_ids: &[],
-        game_dir: cm.game_dir.as_deref(),
-        game_name: &cm.name,
-    };
+/// Um programa do catálogo é um jogo só, achado em quantas pastas for (ex.: o
+/// recomp baixado de novo em outra pasta, ou o modo portátil junto com o AppData).
+/// O id não depende da pasta, para o histórico não se perder.
+fn catalog_games(input: &ScanInput, matches: &[&CatalogMatch]) -> Vec<Game> {
+    let Some(cm) = matches.first() else { return Vec::new() };
     let mut col = Collector::default();
-    col.add_all(&cm.save_templates, &ctx);
-    let base_id = match (&cm.game_dir, duplicated) {
-        (Some(gd), true) => {
-            let h = blake3::hash(key(gd).as_bytes()).to_hex();
-            format!("cat:{}:{}", cm.entry_id, &h[..8])
+    let mut install_dirs: Vec<PathBuf> = Vec::new();
+    let mut processes: Vec<String> = Vec::new();
+    for m in matches {
+        let ctx = ExpandCtx {
+            sys: input.sys,
+            installs: &[],
+            store_user_ids: &[],
+            game_dir: m.game_dir.as_deref(),
+            game_name: &m.name,
+        };
+        col.add_all(&m.save_templates, &ctx);
+        if let Some(d) = &m.game_dir {
+            if !install_dirs.iter().any(|x| key(x) == key(d)) {
+                install_dirs.push(d.clone());
+            }
         }
-        _ => format!("cat:{}", cm.entry_id),
-    };
+        for p in &m.processes {
+            if !processes.iter().any(|x| x.eq_ignore_ascii_case(p)) {
+                processes.push(p.clone());
+            }
+        }
+    }
+    let base_id = format!("cat:{}", cm.entry_id);
     let make = |id: String, title: String| {
         let mut g = empty_game(id, title, GameSource::Catalog);
-        g.game_dir = cm.game_dir.clone();
-        g.process_names = cm.processes.clone();
+        g.install_dirs = install_dirs.clone();
+        g.process_names = processes.clone();
         g
     };
 
@@ -284,17 +296,50 @@ pub fn scan(input: &ScanInput) -> Vec<Game> {
             .collect(),
         None => Vec::new(),
     };
+    let mut entries: Vec<&str> = Vec::new();
     for cm in input.catalog {
-        let duplicated = input.catalog.iter().filter(|x| x.entry_id == cm.entry_id).count() > 1;
-        games.extend(catalog_games(input, cm, duplicated));
+        if !entries.contains(&cm.entry_id.as_str()) {
+            entries.push(&cm.entry_id);
+        }
+    }
+    for id in entries {
+        games.extend(catalog_games(input, &catalog_group(input, id)));
     }
     for cg in &input.local.custom_games {
         games.push(custom_game(input, cg));
     }
-    games.retain(|g| !input.local.settings.get(&g.id).is_some_and(|s| s.ignored));
+    games.retain(|g| !is_ignored(input, &g.id));
     for g in &mut games {
         finalize(g, input.sys);
     }
     games.sort_by(|a, b| b.last_saved.cmp(&a.last_saved).then_with(|| a.title.cmp(&b.title)));
     games
+}
+
+fn catalog_group<'a>(input: &ScanInput<'a>, entry_id: &str) -> Vec<&'a CatalogMatch> {
+    input.catalog.iter().filter(|x| x.entry_id == entry_id).collect()
+}
+
+fn is_ignored(input: &ScanInput, id: &str) -> bool {
+    input.local.settings.get(id).is_some_and(|s| s.ignored)
+}
+
+/// Escaneia um jogo só, com o mesmo resultado que `scan` daria para ele: usado
+/// logo antes de um backup ou restauração, para agir sobre o disco de agora.
+/// `None` se o jogo não existe (mais) neste PC.
+pub fn scan_game(input: &ScanInput, id: &str) -> Option<Game> {
+    let mut game = if let Some(title) = id.strip_prefix("pc:") {
+        let g = input.manifest?.games.get(title).filter(|g| g.alias.is_none())?;
+        manifest_game(input, title, g)?
+    } else if let Some(rest) = id.strip_prefix("cat:") {
+        let entry_id = rest.split(':').next().unwrap_or(rest);
+        catalog_games(input, &catalog_group(input, entry_id)).into_iter().find(|g| g.id == id)?
+    } else {
+        custom_game(input, input.local.custom_games.iter().find(|c| c.id == id)?)
+    };
+    if is_ignored(input, &game.id) {
+        return None;
+    }
+    finalize(&mut game, input.sys);
+    Some(game)
 }

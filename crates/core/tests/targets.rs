@@ -40,7 +40,7 @@ fn ctx<'a>(s: &'a SystemPaths, ids: &[&str], gd: Option<&str>, lembrado: &'a BTr
         sys: s,
         installs: vec![],
         store_user_ids: ids.iter().map(|x| x.to_string()).collect(),
-        game_dir: gd.map(PathBuf::from),
+        game_dirs: gd.map(PathBuf::from).into_iter().collect(),
         remembered: lembrado,
     }
 }

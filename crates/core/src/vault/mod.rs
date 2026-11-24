@@ -37,6 +37,9 @@ impl Vault {
         if file.is_file() {
             let text = std::fs::read_to_string(&file).map_err(io(&file))?;
             let v: VaultFile = serde_json::from_str(&text).map_err(|e| Error::Parse(format!("cofre.json: {e}")))?;
+            if v.format > FORMAT {
+                return Err(Error::FormatTooNew { found: v.format, supported: FORMAT });
+            }
             return Ok(Vault { root: root.to_path_buf(), id: v.id });
         }
         std::fs::create_dir_all(root).map_err(io(root))?;
@@ -68,12 +71,14 @@ impl Vault {
         let names = [base.clone(), format!("{base} ({})", &hash[..6]), format!("{base} ({hash})")];
         for name in names {
             let dir = self.root.join(&name);
-            match Self::read_descriptor(&dir) {
-                Some(d) if d.game_id != game_id => continue,
-                _ => {
-                    std::fs::create_dir_all(&dir).map_err(io(&dir))?;
-                    return Ok(dir);
-                }
+            let free = match Self::read_descriptor(&dir) {
+                Some(d) => d.game_id == game_id,
+                // jogo.json que existe mas não dá para ler (ex.: formato mais novo) = ocupada.
+                None => !dir.join(GAME_FILE).exists(),
+            };
+            if free {
+                std::fs::create_dir_all(&dir).map_err(io(&dir))?;
+                return Ok(dir);
             }
         }
         Err(Error::Parse(format!("não foi possível criar a pasta de {title} no cofre")))

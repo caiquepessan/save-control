@@ -100,6 +100,9 @@ pub struct GameDescriptor {
     pub source: GameSource,
     pub custom: Option<CustomGame>,
     pub steam_app_id: Option<u32>,
+    /// Executáveis do jogo, para saber se ele está aberto mesmo quando só existe no cofre.
+    #[serde(default)]
+    pub process_names: Vec<String>,
 }
 
 const RESERVED: [&str; 22] = [
