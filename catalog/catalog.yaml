@@ -1,0 +1,34 @@
+# Catálogo próprio do Save Control: programas que a base de jogos de PC não cobre.
+# Caminhos usam os mesmos placeholders da base, mais <gameDir> (pasta do executável),
+# <programFiles> e <programFilesX86>.
+entries:
+  - id: zelda64recomp
+    name: "Zelda 64: Recompiled"
+    kind: recomp
+    exe: [Zelda64Recompiled.exe]
+    rule: n64recomp
+    appdata_dir: Zelda64Recompiled
+    processes: [Zelda64Recompiled.exe]
+  - id: banjorecomp
+    name: "Banjo: Recompiled"
+    kind: recomp
+    exe: [BanjoRecompiled.exe]
+    rule: n64recomp
+    appdata_dir: BanjoRecompiled
+    processes: [BanjoRecompiled.exe]
+  - id: project64
+    name: Project64
+    kind: emulator
+    exe: [Project64.exe]
+    search: ["<programFiles>/Project64 3.0", "<programFilesX86>/Project64 3.0"]
+    saves: ["<gameDir>/Save/*"]
+    split: by_file_stem
+    processes: [Project64.exe]
+  - id: retroarch
+    name: RetroArch
+    kind: emulator
+    exe: [retroarch.exe]
+    search: ["C:/RetroArch-Win64", "<winAppData>/RetroArch"]
+    saves: ["<gameDir>/saves/**/*.srm"]
+    split: by_file_stem
+    processes: [retroarch.exe]
