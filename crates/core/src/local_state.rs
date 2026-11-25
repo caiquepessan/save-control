@@ -8,6 +8,7 @@ use serde::{Deserialize, Serialize};
 use crate::custom::CustomGame;
 use crate::error::{Error, Result, io};
 use crate::fsutil::write_atomic;
+use crate::vault::retention::RetentionPolicy;
 
 #[derive(Clone, Debug, Default, PartialEq, Serialize, Deserialize)]
 #[serde(default)]
@@ -19,6 +20,8 @@ pub struct LocalGameSettings {
     pub cover: Option<PathBuf>,
     pub auto_backup: Option<bool>,
     pub include_config: Option<bool>,
+    /// Retenção dos automáticos só deste jogo (`None` = a geral).
+    pub retention: Option<RetentionPolicy>,
     /// Template da raiz → pasta escolhida neste PC na hora de restaurar.
     pub target_choices: BTreeMap<String, PathBuf>,
 }

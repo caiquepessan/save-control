@@ -276,6 +276,8 @@ impl Engine {
 
     pub fn backup(&mut self, game_id: &str, kind: SnapshotKind, label: Option<&str>) -> Result<BackupOutcome> {
         let game = self.refresh_game(game_id)?;
+        // A retenção do jogo, se ele tiver uma; senão a geral.
+        let retention = self.game_settings(game_id).retention.unwrap_or_else(|| self.retention.clone());
         let result = {
             let mut ctx = BackupCtx {
                 vault: &self.vault,
@@ -285,12 +287,48 @@ impl Engine {
                 hooks: &RealHooks,
                 now: Local::now(),
                 app_version: env!("CARGO_PKG_VERSION"),
-                retention: &self.retention,
+                retention: &retention,
             };
             backup_game(&mut ctx, &game, kind, label)
         };
         self.persist()?;
         result
+    }
+
+    /// Retenção geral dos automáticos (a de cada jogo, se houver, vale mais).
+    pub fn set_retention(&mut self, policy: RetentionPolicy) {
+        self.retention = policy;
+    }
+
+    pub fn retention(&self) -> &RetentionPolicy {
+        &self.retention
+    }
+
+    /// Fixa (ou desafixa) um backup automático, de qualquer PC: fixado nunca
+    /// sai na limpeza automática. Só automáticos e fixados mudam.
+    pub fn pin_snapshot(&mut self, game_id: &str, file_name: &str, pinned: bool) -> Result<SnapshotEntry> {
+        self.vault.ensure_available()?;
+        let e = self.find_entry(game_id, file_name)?;
+        let (new_name, kind) = match (pinned, e.kind) {
+            (true, SnapshotKind::Auto) => (self.vault.pin(&e.dir_name, &e.file_name)?, SnapshotKind::Pinned),
+            (false, SnapshotKind::Pinned) => (self.vault.unpin(&e.dir_name, &e.file_name)?, SnapshotKind::Auto),
+            (true, SnapshotKind::Pinned) | (false, SnapshotKind::Auto) => return Ok(e),
+            _ => return Err(Error::NotFound(format!("backup automático {file_name}"))),
+        };
+        self.index.remove(&e.dir_name, &e.file_name);
+        let entry = SnapshotEntry { file_name: new_name, kind, ..e };
+        self.index.insert(entry.clone());
+        self.persist()?;
+        Ok(entry)
+    }
+
+    /// Apaga um backup do cofre (de qualquer PC), a pedido do usuário.
+    pub fn delete_snapshot(&mut self, game_id: &str, file_name: &str) -> Result<()> {
+        self.vault.ensure_available()?;
+        let e = self.find_entry(game_id, file_name)?;
+        self.vault.delete_snapshot(&e.dir_name, &e.file_name)?;
+        self.index.remove(&e.dir_name, &e.file_name);
+        self.persist()
     }
 
     pub fn history(&self, game_id: &str) -> Vec<SnapshotEntry> {

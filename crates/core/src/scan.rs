@@ -121,8 +121,15 @@ fn manifest_game(input: &ScanInput, title: &str, g: &ManifestGame) -> Option<Gam
         game_dir: None,
         game_name: title,
     };
+    // "Incluir configurações": o ajuste do jogo vale mais que o geral.
+    let include_config = input
+        .local
+        .settings
+        .get(&format!("pc:{title}"))
+        .and_then(|s| s.include_config)
+        .unwrap_or(input.include_config);
     let templates: Vec<String> =
-        g.save_files_for_windows(input.include_config).into_iter().map(|f| f.path.clone()).collect();
+        g.save_files_for_windows(include_config).into_iter().map(|f| f.path.clone()).collect();
     let mut col = Collector::default();
     col.add_all(&templates, &ctx);
     if col.files.is_empty() && candidates.is_empty() {

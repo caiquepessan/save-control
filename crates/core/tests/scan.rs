@@ -148,3 +148,28 @@ fn instalado_sem_save_entra_vazio() {
     let g = run(&s, Some(&m), &i, &[], &LocalState::default(), false);
     assert_eq!((g.len(), g[0].files.len()), (1, 0));
 }
+
+#[test]
+fn incluir_config_por_jogo() {
+    let (_t, s) = fake_home();
+    write(&s.documents.join("JogoB/settings.cfg"), b"x");
+    write(&s.documents.join("JogoE/opcoes.cfg"), b"x");
+    let m = Manifest::from_yaml(concat!(
+        "Jogo B:\n  files:\n    <winDocuments>/JogoB/settings.cfg:\n      tags: [config]\n",
+        "Jogo E:\n  files:\n    <winDocuments>/JogoE/opcoes.cfg:\n      tags: [config]\n",
+    ))
+    .unwrap();
+    let ids = |l: &LocalState, global: bool| -> Vec<String> {
+        run(&s, Some(&m), &Installs::default(), &[], l, global).into_iter().map(|g| g.id).collect()
+    };
+
+    // Configurações desligadas no geral, ligadas só no Jogo B.
+    let mut so_b = LocalState::default();
+    so_b.settings.insert("pc:Jogo B".into(), LocalGameSettings { include_config: Some(true), ..Default::default() });
+    assert_eq!(ids(&so_b, false), ["pc:Jogo B"]);
+
+    // Ligadas no geral, desligadas só no Jogo E.
+    let mut sem_e = LocalState::default();
+    sem_e.settings.insert("pc:Jogo E".into(), LocalGameSettings { include_config: Some(false), ..Default::default() });
+    assert_eq!(ids(&sem_e, true), ["pc:Jogo B"]);
+}

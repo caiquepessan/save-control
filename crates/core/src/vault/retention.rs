@@ -3,11 +3,13 @@
 use std::collections::HashSet;
 
 use chrono::{DateTime, Datelike, Duration, Local, NaiveDate};
+use serde::{Deserialize, Serialize};
 
 use crate::vault::format::SnapshotKind;
 use crate::vault::index::SnapshotEntry;
 
-#[derive(Clone, Debug)]
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
 pub struct RetentionPolicy {
     pub auto_recent: usize,
     pub auto_daily_days: u32,

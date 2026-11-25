@@ -134,6 +134,18 @@ impl Vault {
         Ok(new_name)
     }
 
+    /// Desafixa: o backup volta a ser automático (`_fixado.zip` → `_auto.zip`).
+    pub fn unpin(&self, dir_name: &str, file_name: &str) -> Result<String> {
+        let pinned = format!("_{}.zip", SnapshotKind::Pinned.suffix());
+        let stem = file_name
+            .strip_suffix(&pinned)
+            .ok_or_else(|| Error::NotFound(format!("backup fixado {file_name}")))?;
+        let new_name = format!("{stem}_{}.zip", SnapshotKind::Auto.suffix());
+        let dir = self.root.join(dir_name);
+        std::fs::rename(dir.join(file_name), dir.join(&new_name)).map_err(crate::error::io(dir.join(file_name)))?;
+        Ok(new_name)
+    }
+
     pub fn delete_snapshot(&self, dir_name: &str, file_name: &str) -> Result<()> {
         let path = self.root.join(dir_name).join(file_name);
         std::fs::remove_file(&path).map_err(crate::error::io(&path))
