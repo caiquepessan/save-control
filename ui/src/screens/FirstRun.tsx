@@ -76,7 +76,7 @@ export function FirstRun() {
     try {
       const sonda = await backend.inspecionarCofre(padrao);
       // Só vale se a pessoa ainda não escolheu outra pasta.
-      setCofre((c) => (c.pasta === padrao ? { pasta: padrao, existe: sonda.exists, versoes: sonda.versions } : c));
+      setCofre((c) => (c.pasta === padrao ? { pasta: sonda.path, existe: sonda.exists, versoes: sonda.versions } : c));
     } catch {
       // Sem a inspeção, o cofre padrão é tratado como novo.
     }
@@ -221,6 +221,7 @@ export function FirstRun() {
           ) : (
             <p className="assistente-texto">{T.primeiroUso.nenhumTexto}</p>
           )}
+          <p className="nota info">{T.primeiroUso.dicaPastas}</p>
           {semInternet}
           <div className="assistente-botoes">
             {comSave.length ? (

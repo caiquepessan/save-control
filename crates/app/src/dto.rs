@@ -363,6 +363,8 @@ pub struct VaultProbeView {
     pub exists: bool,
     #[ts(type = "number")]
     pub versions: usize,
+    /// Onde o cofre fica (ou vai ficar): a pasta escolhida ou a subpasta "cofre" dela.
+    pub path: String,
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize, TS)]

@@ -41,7 +41,20 @@ fn registro() -> Box<dyn RegistryReader + Send> {
 }
 
 pub fn servico(w: &Mundo, busy: BusyFlag) -> AppService {
-    AppService::new(resolve_paths(&w.exe, &w.lad), w.sys.clone(), Box::new(registro), busy)
+    servico_em(w, &w.exe, busy)
+}
+
+/// O serviço com o `.exe` em outra pasta (ex.: o HD em outra letra).
+pub fn servico_em(w: &Mundo, exe: &Path, busy: BusyFlag) -> AppService {
+    AppService::new(resolve_paths(exe, &w.lad), w.sys.clone(), Box::new(registro), busy)
+}
+
+/// Move a pasta do app inteira (o `.exe`, os dados e o cofre ao lado) para outro lugar.
+pub fn mover_app(w: &Mundo) -> PathBuf {
+    let novo = w.t.path().join("OutraLetra").join("App");
+    std::fs::create_dir_all(novo.parent().unwrap()).unwrap();
+    std::fs::rename(&w.exe, &novo).unwrap();
+    novo
 }
 
 /// Serviço já passado pelo primeiro uso, com o cofre padrão ao lado do `.exe`.

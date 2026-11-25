@@ -107,7 +107,7 @@ fn main() -> anyhow::Result<()> {
             eng.set_user_roots(pastas)?;
             println!("Pastas de jogos salvas.");
         }
-        Cmd::AtualizarBase => match eng.update_manifest(&HttpFetcher)? {
+        Cmd::AtualizarBase => match eng.update_manifest(&HttpFetcher::default())? {
             UpdateOutcome::Updated => println!("Base de jogos baixada."),
             UpdateOutcome::NotModified => println!("A base de jogos já está atualizada."),
             UpdateOutcome::Skipped => println!("A base foi conferida nas últimas 24 h."),

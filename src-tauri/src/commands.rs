@@ -95,7 +95,7 @@ pub async fn fazer_backup(state: State<'_, Shared>, id: String, nome: Option<Str
 
 #[tauri::command]
 pub async fn backup_de_varios(state: State<'_, Shared>, ids: Vec<String>) -> Res<BackupManyView> {
-    com_servico(&state, move |s| Ok(s.backup_many(&ids))).await
+    com_servico(&state, move |s| s.backup_many(&ids)).await
 }
 
 #[tauri::command]
@@ -236,7 +236,7 @@ pub async fn trocar_cofre(state: State<'_, Shared>, pasta: String, criar: bool) 
 
 #[tauri::command]
 pub async fn inspecionar_cofre(state: State<'_, Shared>, pasta: String) -> Res<VaultProbeView> {
-    com_servico(&state, move |s| Ok(s.inspect_vault(Path::new(&pasta)))).await
+    com_servico(&state, move |s| s.inspect_vault(Path::new(&pasta))).await
 }
 
 #[tauri::command]
@@ -246,7 +246,7 @@ pub async fn tentar_cofre_de_novo(state: State<'_, Shared>) -> Res<AppStateView>
 
 #[tauri::command]
 pub async fn atualizar_base(state: State<'_, Shared>) -> Res<ManifestUpdateView> {
-    com_servico(&state, |s| s.update_manifest(&HttpFetcher)).await
+    com_servico(&state, |s| s.update_manifest(&HttpFetcher::default())).await
 }
 
 #[tauri::command]

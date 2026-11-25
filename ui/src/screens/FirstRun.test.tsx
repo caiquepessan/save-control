@@ -18,7 +18,18 @@ describe("primeiro uso", () => {
     await irAteOCofre();
     expect(screen.getByText("D:\\Save Control\\cofre")).toBeInTheDocument();
     await userEvent.click(screen.getByRole("button", { name: "Escolher outra pasta…" }));
-    expect(await screen.findByText("D:\\Jogos\\Pasta Escolhida")).toBeInTheDocument();
+    // A pasta escolhida tem outros arquivos: o cofre vai para a subpasta "cofre".
+    expect(await screen.findByText("D:\\Jogos\\Pasta Escolhida\\cofre")).toBeInTheDocument();
+  });
+
+  it("o resumo diz onde adicionar as pastas de jogos", async () => {
+    renderApp(createDemoBackend({ atraso: 0, fase: "primeiroUso" }));
+    await irAteOCofre();
+    await userEvent.click(screen.getByRole("button", { name: "Continuar" }));
+    await screen.findByRole("heading", { name: "Encontramos 11 jogos com save" });
+    expect(
+      screen.getByText("Recomps, ports ou emuladores numa pasta sua (ex.: D:\\Jogos)? Adicione a pasta em Configurações → Pastas de jogos."),
+    ).toBeInTheDocument();
   });
 
   it("sem internet avisa e segue para o escaneamento", async () => {

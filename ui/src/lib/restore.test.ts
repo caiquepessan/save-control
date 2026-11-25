@@ -26,6 +26,13 @@ const previa: RestorePreviewView = {
 const jogo = { title: "Reino Esmeralda: A Flauta do Tempo", processNames: ["Jogo.exe"] } as GameView;
 
 describe("textos da confirmação de restaurar", () => {
+  it("em outra pasta, diz que o save do jogo não muda", () => {
+    const t = textosDaRestauracao(previa, jogo, { maisAntiga: false, outraPasta: true }, agora);
+    expect(t.corpo).toBe(
+      "Os arquivos desta versão vão para a pasta escolhida, e o save do jogo não muda. Se a pasta já tiver arquivos com o mesmo nome, eles são guardados no cofre antes.",
+    );
+  });
+
   it("título, texto e linhas do mockup", () => {
     const t = textosDaRestauracao(previa, jogo, { maisAntiga: false }, agora);
     expect(t.titulo).toBe('Restaurar "Antes de atualizar o recomp"?');

@@ -242,10 +242,13 @@ export function createDemoBackend(opcoes: OpcoesDemo = {}): DemoBackend {
     diskFree: 620 * GB,
   };
   let cofre = vault.path;
-  // Pastas que já têm cofre: no primeiro uso e com o cofre sumido, nem a padrão tem.
-  // Fora isso, qualquer pasta com "cofre" no nome finge ter um.
-  const cofres = new Set<string>(fase === "pronto" || fase === "falhou" ? [vault.path] : []);
-  const temCofre = (pasta: string) => cofres.has(pasta) || (pasta !== vault.path && pasta.toLowerCase().includes("cofre"));
+  // Pastas que já têm cofre: um "HD de backup" de exemplo e, fora do primeiro uso
+  // e do cofre sumido, o cofre padrão.
+  const cofres = new Set<string>(["E:\\Backup\\cofre", ...(fase === "pronto" || fase === "falhou" ? [vault.path] : [])]);
+  const temCofre = (pasta: string) => cofres.has(pasta);
+  // Como o app: uma pasta que não é cofre nem se chama "cofre" finge ter outros
+  // arquivos, então o cofre novo vai para a subpasta "cofre" dela.
+  const destino = (pasta: string) => (temCofre(pasta) || /\\cofre$/i.test(pasta) ? pasta : `${pasta}\\cofre`);
   const config ={ userRoots: ["D:\\Jogos"], includeConfig: false, steamCovers: true, manifestLoaded: true };
   const abertos = new Set<string>([IDS.reino]);
   const ouvintesCapa = new Set<(id: string, caminho: string) => void>();
@@ -489,15 +492,17 @@ export function createDemoBackend(opcoes: OpcoesDemo = {}): DemoBackend {
     },
     async trocarCofre(pasta, criar) {
       await espera();
-      if (!criar && !temCofre(pasta)) throw erro("naoEncontrado", "Não há um cofre nessa pasta.");
-      cofres.add(pasta);
-      cofre = pasta;
+      const p = destino(pasta);
+      if (!criar && !temCofre(p)) throw erro("naoEncontrado", "Não há um cofre nessa pasta.");
+      cofres.add(p);
+      cofre = p;
       fase = "pronto";
       return estado();
     },
     async inspecionarCofre(pasta) {
       await espera();
-      return temCofre(pasta) ? { exists: true, versions: 212 } : { exists: false, versions: 0 };
+      const p = destino(pasta);
+      return temCofre(p) ? { exists: true, versions: 212, path: p } : { exists: false, versions: 0, path: p };
     },
     async tentarCofreDeNovo() {
       await espera();
@@ -513,8 +518,9 @@ export function createDemoBackend(opcoes: OpcoesDemo = {}): DemoBackend {
     },
     async concluirPrimeiroUso(pastaDoCofre) {
       await espera();
-      cofres.add(pastaDoCofre);
-      cofre = pastaDoCofre;
+      const p = destino(pastaDoCofre);
+      cofres.add(p);
+      cofre = p;
       fase = "pronto";
       return estado();
     },

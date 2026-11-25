@@ -25,14 +25,15 @@ function nomeParaFechar(jogo: Pick<GameView, "title" | "processNames">): string 
 export function textosDaRestauracao(
   previa: RestorePreviewView,
   jogo: Pick<GameView, "title" | "processNames">,
-  opcoes: { maisAntiga: boolean; soArquivos?: number },
+  /** `outraPasta`: a pessoa escolheu restaurar numa pasta qualquer (o save do jogo não muda). */
+  opcoes: { maisAntiga: boolean; soArquivos?: number; outraPasta?: boolean },
   agora: Date = new Date(),
 ): TextosRestauracao {
   const s = previa.snapshot;
   const quando = dataEHora(s.createdAt, agora);
   return {
     titulo: T.restaurar.titulo(tituloDaVersao(s, opcoes.maisAntiga)),
-    corpo: T.restaurar.corpo(tituloCurto(jogo.title), quando),
+    corpo: opcoes.outraPasta ? T.restaurar.corpoOutraPasta : T.restaurar.corpo(tituloCurto(jogo.title), quando),
     versao: `${quando} · ${T.versao.tipos[s.kind]}`,
     arquivos:
       opcoes.soArquivos !== undefined

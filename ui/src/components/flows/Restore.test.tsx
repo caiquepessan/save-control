@@ -77,6 +77,7 @@ describe("restaurar", () => {
     await userEvent.click(within(d).getByRole("button", { name: "Restaurar em outra pasta…" }));
     expect(escolher).toHaveBeenCalled();
     await waitFor(() => expect(within(d).getByText("D:\\Jogos\\Pasta Escolhida")).toBeInTheDocument());
+    expect(within(d).getByText(/o save do jogo não muda/)).toBeInTheDocument();
     await userEvent.click(within(d).getByRole("button", { name: "Restaurar" }));
     await waitFor(() =>
       expect(restaurar).toHaveBeenCalledWith(IDS.academia, expect.any(String), {

@@ -2,6 +2,7 @@
 
 use std::io::Read;
 use std::path::PathBuf;
+use std::time::{Duration as StdDuration, Instant};
 
 use chrono::{DateTime, Duration, Utc};
 
@@ -26,12 +27,34 @@ pub trait Fetcher {
     fn fetch(&self, url: &str, etag: Option<&str>) -> Result<FetchResult>;
 }
 
-/// Busca pela internet, com `If-None-Match` quando já existe um ETag.
-pub struct HttpFetcher;
+/// Busca pela internet, com `If-None-Match` quando já existe um ETag. Com
+/// tempo limite: uma conexão que trava não prende o app para sempre.
+pub struct HttpFetcher {
+    /// Para conectar.
+    pub connect: StdDuration,
+    /// Sem receber nada por este tempo, desiste.
+    pub read: StdDuration,
+    /// O download inteiro.
+    pub total: StdDuration,
+}
+
+impl Default for HttpFetcher {
+    fn default() -> Self {
+        HttpFetcher {
+            connect: StdDuration::from_secs(15),
+            read: StdDuration::from_secs(30),
+            total: StdDuration::from_secs(10 * 60),
+        }
+    }
+}
 
 impl Fetcher for HttpFetcher {
     fn fetch(&self, url: &str, etag: Option<&str>) -> Result<FetchResult> {
-        let mut req = ureq::get(url).set("User-Agent", "save-control");
+        // Sem `.timeout()` do ureq: ele passaria por cima do limite de cada leitura.
+        // O limite total é conferido abaixo, a cada pedaço recebido.
+        let inicio = Instant::now();
+        let agent = ureq::AgentBuilder::new().timeout_connect(self.connect).timeout_read(self.read).build();
+        let mut req = agent.get(url).set("User-Agent", "save-control");
         if let Some(e) = etag {
             req = req.set("If-None-Match", e);
         }
@@ -40,9 +63,18 @@ impl Fetcher for HttpFetcher {
             Ok(resp) => {
                 let etag = resp.header("ETag").map(str::to_string);
                 let mut body = Vec::new();
-                resp.into_reader()
-                    .read_to_end(&mut body)
-                    .map_err(|e| Error::Http(e.to_string()))?;
+                let mut reader = resp.into_reader();
+                let mut chunk = vec![0u8; 64 * 1024];
+                loop {
+                    let n = reader.read(&mut chunk).map_err(|e| Error::Http(e.to_string()))?;
+                    if n == 0 {
+                        break;
+                    }
+                    body.extend_from_slice(&chunk[..n]);
+                    if inicio.elapsed() > self.total {
+                        return Err(Error::Http("o download da base demorou demais".into()));
+                    }
+                }
                 Ok(FetchResult::Fetched { body, etag })
             }
             Err(ureq::Error::Status(304, _)) => Ok(FetchResult::NotModified),

@@ -26,7 +26,7 @@ use savecontrol_core::vault::index::SnapshotEntry;
 use crate::config::{AppConfig, WindowState, load_config, save_config};
 use crate::covers::CoverStore;
 use crate::dto::*;
-use crate::paths::AppPaths;
+use crate::paths::{AppPaths, VAULT_DIR_NAME};
 use crate::texts;
 use crate::view::{ViewCtx, date_str, game_view, path_str, snapshot_view, vault_view};
 
@@ -74,6 +74,51 @@ fn to_paths(m: &BTreeMap<String, String>) -> BTreeMap<String, PathBuf> {
 
 fn erro(message: impl Into<String>) -> ErrorView {
     ErrorView::new(ErrorKind::Erro, message)
+}
+
+/// Partes do caminho, sem diferença de maiúsculas (como o Windows compara).
+fn path_key(p: &Path) -> Vec<String> {
+    p.components().map(|c| c.as_os_str().to_string_lossy().to_lowercase()).collect()
+}
+
+fn same_path(a: &Path, b: &Path) -> bool {
+    path_key(a) == path_key(b)
+}
+
+/// `dir` relativo a `base`, se ficar dentro dela.
+fn relative_to(dir: &Path, base: &Path) -> Option<PathBuf> {
+    let n = base.components().count();
+    if path_key(dir).get(..n)? != path_key(base).as_slice() {
+        return None;
+    }
+    let rest: PathBuf = dir.components().skip(n).collect();
+    (!rest.as_os_str().is_empty()).then_some(rest)
+}
+
+fn is_empty_dir(d: &Path) -> bool {
+    std::fs::read_dir(d).map(|mut it| it.next().is_none()).unwrap_or(false)
+}
+
+/// Onde fica (ou vai ficar) o cofre escolhido: a própria pasta se ela já é um
+/// cofre, está vazia ou ainda não existe; senão a subpasta "cofre". Um cofre
+/// novo nunca é misturado com outros arquivos: numa pasta de jogos, os backups
+/// cairiam dentro da pasta de um jogo e sumiriam junto com ela.
+fn vault_target(dir: &Path) -> Res<PathBuf> {
+    let livre = |d: &Path| d.join("cofre.json").is_file() || !d.exists() || is_empty_dir(d);
+    if livre(dir) {
+        return Ok(dir.to_path_buf());
+    }
+    let sub = dir.join(VAULT_DIR_NAME);
+    if livre(&sub) {
+        return Ok(sub);
+    }
+    Err(erro("Essa pasta já tem outros arquivos. Escolha uma pasta vazia ou um cofre que já existe."))
+}
+
+/// A capa copiada para a pasta de capas fica guardada só pelo nome do arquivo
+/// (a pasta de capas acompanha o app quando ele muda de lugar).
+fn cover_name(dest: PathBuf) -> PathBuf {
+    dest.file_name().map(PathBuf::from).unwrap_or(dest)
 }
 
 pub struct AppService {
@@ -138,8 +183,27 @@ impl AppService {
         self.config.steam_covers
     }
 
+    /// A pasta do cofre. Na configuração, `None` é o cofre padrão e um caminho
+    /// relativo é dentro da pasta do app (os dois acompanham o HD que muda de letra).
     fn vault_dir(&self) -> PathBuf {
-        self.config.vault_dir.clone().unwrap_or_else(|| self.paths.default_vault.clone())
+        match &self.config.vault_dir {
+            None => self.paths.default_vault.clone(),
+            Some(p) if p.is_relative() => self.paths.exe_dir.join(p),
+            Some(p) => p.clone(),
+        }
+    }
+
+    /// Como guardar `dir` na configuração (o contrário de `vault_dir`).
+    fn stored_vault(&self, dir: &Path) -> Option<PathBuf> {
+        if same_path(dir, &self.paths.default_vault) {
+            return None;
+        }
+        if !self.paths.fallback {
+            if let Some(rel) = relative_to(dir, &self.paths.exe_dir) {
+                return Some(rel);
+            }
+        }
+        Some(dir.to_path_buf())
     }
 
     fn save_config(&self) -> Res<()> {
@@ -262,7 +326,18 @@ impl AppService {
         })
     }
 
+    /// O cofre está lá agora (o HD pode ter sido desligado com o app aberto).
+    fn vault_available(&self) -> bool {
+        self.vault_dir().join("cofre.json").is_file()
+    }
+
     pub fn scan(&mut self) -> Res<LibraryView> {
+        self.engine()?;
+        // Com o cofre fora, escanear esvaziaria o índice e todo jogo viraria
+        // "Sem backup": mostra o último resultado, com o cofre indisponível.
+        if !self.vault_available() {
+            return self.library();
+        }
         let _busy = self.busy.guard();
         let found = self.engine()?.scan()?;
         self.statuses = found.into_iter().map(|(g, s)| (g.id, s)).collect();
@@ -315,18 +390,32 @@ impl AppService {
             .collect()
     }
 
-    /// Backup manual de vários jogos; uma falha não para os outros.
-    pub fn backup_many(&mut self, ids: &[String]) -> BackupManyView {
+    /// Backup manual de vários jogos; uma falha não para os outros. Com o cofre
+    /// fora, é um erro só (e para no meio se o HD for desligado durante o lote).
+    pub fn backup_many(&mut self, ids: &[String]) -> Res<BackupManyView> {
+        self.engine()?;
+        if !self.vault_available() {
+            return Err(ErrorView::new(
+                ErrorKind::CofreIndisponivel,
+                format!("O cofre em {} não está acessível", path_str(&self.vault_dir())),
+            ));
+        }
         let _busy = self.busy.guard();
         let mut out = BackupManyView::default();
         for id in ids {
             match self.backup_inner(id, None) {
                 Ok(r) if r.outcome == BackupOutcomeView::Feito => out.done.push(id.clone()),
                 Ok(_) => out.unchanged.push(id.clone()),
-                Err(e) => out.failed.push(BackupFailure { id: id.clone(), title: self.title_for(id), message: e.message }),
+                Err(e) => {
+                    let parar = e.kind == ErrorKind::CofreIndisponivel;
+                    out.failed.push(BackupFailure { id: id.clone(), title: self.title_for(id), message: e.message });
+                    if parar {
+                        break;
+                    }
+                }
             }
         }
-        out
+        Ok(out)
     }
 
     pub fn history(&mut self, id: &str) -> Res<Vec<SnapshotView>> {
@@ -421,7 +510,7 @@ impl AppService {
         let _busy = self.busy.guard();
         let g = self.engine()?.add_custom_game(&name, &dirs, &processes, game_dir.as_deref())?;
         if let Some(src) = req.cover_file.as_deref().filter(|c| !c.trim().is_empty()) {
-            let dest = self.covers.import_custom(Path::new(src)).map_err(erro)?;
+            let dest = cover_name(self.covers.import_custom(Path::new(src)).map_err(erro)?);
             self.engine()?.update_game_settings(&g.id, |s| s.cover = Some(dest))?;
         }
         let lib = self.scan()?;
@@ -452,7 +541,7 @@ impl AppService {
     /// Copia a imagem para a pasta de capas e usa neste jogo; `None` volta à capa automática.
     pub fn set_cover(&mut self, id: &str, file: Option<PathBuf>) -> Res<()> {
         let dest = match file {
-            Some(src) => Some(self.covers.import_custom(&src).map_err(erro)?),
+            Some(src) => Some(cover_name(self.covers.import_custom(&src).map_err(erro)?)),
             None => None,
         };
         self.engine()?.update_game_settings(id, |s| s.cover = dest)?;
@@ -531,24 +620,26 @@ impl AppService {
 
     /// Passa a usar o cofre de `dir`. Sem cofre lá, só cria quando `create`.
     pub fn change_vault(&mut self, dir: &Path, create: bool) -> Res<AppStateView> {
+        let dir = vault_target(dir)?;
         if !dir.join("cofre.json").is_file() {
             if !create {
                 return Err(ErrorView::new(ErrorKind::NaoEncontrado, "Não há um cofre nessa pasta."));
             }
-            Vault::open_or_create(dir)?;
+            Vault::open_or_create(&dir)?;
         }
-        self.config.vault_dir = Some(dir.to_path_buf());
+        self.config.vault_dir = self.stored_vault(&dir);
         self.save_config()?;
         self.reset_engine();
         Ok(self.state())
     }
 
-    /// Só lê: existe um cofre em `dir`? Quantos backups ele tem?
-    pub fn inspect_vault(&self, dir: &Path) -> VaultProbeView {
+    /// Só lê: onde o cofre de `dir` fica, se ele já existe e quantos backups tem.
+    pub fn inspect_vault(&self, dir: &Path) -> Res<VaultProbeView> {
+        let dir = vault_target(dir)?;
         let exists = dir.join("cofre.json").is_file();
         let mut versions = 0;
         if exists {
-            for sub in std::fs::read_dir(dir).into_iter().flatten().flatten().filter(|s| s.path().is_dir()) {
+            for sub in std::fs::read_dir(&dir).into_iter().flatten().flatten().filter(|s| s.path().is_dir()) {
                 versions += std::fs::read_dir(sub.path())
                     .into_iter()
                     .flatten()
@@ -557,7 +648,7 @@ impl AppService {
                     .count();
             }
         }
-        VaultProbeView { exists, versions }
+        Ok(VaultProbeView { exists, versions, path: path_str(&dir) })
     }
 
     pub fn retry_vault(&mut self) -> AppStateView {
@@ -565,9 +656,10 @@ impl AppService {
         self.state()
     }
 
-    /// Sem internet não é erro: a interface mostra o aviso e segue.
+    /// Sem internet não é erro: a interface mostra o aviso e segue. Não liga o
+    /// "ocupado": baixar a base não mexe em save nenhum (e os arquivos dela são
+    /// gravados de forma atômica), então a janela pode fechar no meio.
     pub fn update_manifest(&mut self, fetcher: &dyn Fetcher) -> Res<ManifestUpdateView> {
-        let _busy = self.busy.guard();
         Ok(match self.engine()?.update_manifest(fetcher) {
             Ok(UpdateOutcome::Updated) => ManifestUpdateView { outcome: ManifestOutcome::Atualizada, message: None },
             Ok(_) => ManifestUpdateView { outcome: ManifestOutcome::SemNovidade, message: None },
@@ -576,8 +668,9 @@ impl AppService {
     }
 
     pub fn finish_first_run(&mut self, vault_dir: &Path) -> Res<AppStateView> {
-        Vault::open_or_create(vault_dir)?;
-        self.config.vault_dir = Some(vault_dir.to_path_buf());
+        let vault_dir = vault_target(vault_dir)?;
+        Vault::open_or_create(&vault_dir)?;
+        self.config.vault_dir = self.stored_vault(&vault_dir);
         self.config.first_run_done = true;
         self.save_config()?;
         self.reset_engine();

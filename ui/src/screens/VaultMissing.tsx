@@ -17,7 +17,8 @@ export function VaultMissing() {
   const trocarCofre = useApp((s) => s.trocarCofre);
   const [ocupado, setOcupado] = useState(false);
   const [mensagem, setMensagem] = useState<string | null>(null);
-  const [criar, setCriar] = useState(false);
+  /** Pasta onde o cofre novo seria criado (a confirmação mostra ela). */
+  const [criar, setCriar] = useState<string | null>(null);
   const [achado, setAchado] = useState<CofreEscolhido | null>(null);
 
   async function tentarDeNovo() {
@@ -42,8 +43,20 @@ export function VaultMissing() {
     else setMensagem(T.cofreSumido.semCofre);
   }
 
+  /** Vê antes onde o cofre ficaria (e se ele voltou), para a confirmação mostrar a pasta certa. */
+  async function criarAqui() {
+    setMensagem(null);
+    try {
+      const sonda = await backend.inspecionarCofre(caminho);
+      if (sonda.exists) setAchado({ pasta: sonda.path, existe: true, versoes: sonda.versions });
+      else setCriar(sonda.path);
+    } catch (e) {
+      setMensagem(ErroApp.de(e).message);
+    }
+  }
+
   async function usar(pasta: string, criarNovo: boolean) {
-    setCriar(false);
+    setCriar(null);
     setAchado(null);
     setOcupado(true);
     const erro = await trocarCofre(pasta, criarNovo);
@@ -74,17 +87,17 @@ export function VaultMissing() {
             {T.cofreSumido.procurar}
           </button>
         </div>
-        <button type="button" className="lnk-sec" disabled={ocupado} onClick={() => setCriar(true)}>
+        <button type="button" className="lnk-sec" disabled={ocupado} onClick={() => void criarAqui()}>
           {T.cofreSumido.criarAqui}
         </button>
       </div>
       {criar ? (
         <Confirmacao
-          titulo={T.cofreSumido.criarTitulo(caminho)}
+          titulo={T.cofreSumido.criarTitulo(criar)}
           texto={T.cofreSumido.criarTexto}
           confirmar={T.escolherCofre.botaoCriar}
-          onConfirmar={() => void usar(caminho, true)}
-          onCancelar={() => setCriar(false)}
+          onConfirmar={() => void usar(criar, true)}
+          onCancelar={() => setCriar(null)}
         />
       ) : null}
       {achado ? (

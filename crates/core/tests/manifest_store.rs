@@ -52,3 +52,25 @@ fn cache_corrompido_rele_o_yaml() {
     assert_eq!(st.load().unwrap().unwrap().games.len(), 4);
     assert!(std::fs::metadata(d.path().join("manifest.cache")).unwrap().len() > 100);
 }
+
+/// Um servidor que manda o começo da resposta e trava: o download tem de desistir
+/// sozinho (senão o primeiro uso e "Atualizar agora" ficam presos para sempre).
+#[test]
+fn download_desiste_quando_o_servidor_trava() {
+    use std::io::{Read, Write};
+    use std::time::{Duration as Dur, Instant};
+    let l = std::net::TcpListener::bind("127.0.0.1:0").unwrap();
+    let porta = l.local_addr().unwrap().port();
+    std::thread::spawn(move || {
+        let (mut s, _) = l.accept().unwrap();
+        let mut buf = [0u8; 2048];
+        let _ = s.read(&mut buf);
+        let _ = s.write_all(b"HTTP/1.1 200 OK\r\nContent-Length: 100000\r\n\r\nmetade");
+        std::thread::sleep(Dur::from_secs(20));
+    });
+    let f = HttpFetcher { connect: Dur::from_secs(2), read: Dur::from_millis(300), total: Dur::from_secs(10) };
+    let t0 = Instant::now();
+    let r = f.fetch(&format!("http://127.0.0.1:{porta}/manifest.yaml"), None);
+    assert!(r.is_err(), "o download travado não deu erro");
+    assert!(t0.elapsed() < Dur::from_secs(5), "demorou {:?}", t0.elapsed());
+}

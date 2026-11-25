@@ -62,11 +62,13 @@ describe("configurações", () => {
     await abrirConfiguracoes();
     await userEvent.click(await screen.findByRole("button", { name: "Trocar pasta…" }));
     const d = await screen.findByRole("dialog", { name: "Criar um cofre novo nesta pasta?" });
+    // A pasta escolhida tem outros arquivos: o cofre novo vai para a subpasta "cofre".
+    expect(within(d).getByText("D:\\Jogos\\Pasta Escolhida\\cofre")).toBeInTheDocument();
     expect(trocar).not.toHaveBeenCalled();
     await userEvent.click(within(d).getByRole("button", { name: "Criar" }));
-    await waitFor(() => expect(trocar).toHaveBeenCalledWith("D:\\Jogos\\Pasta Escolhida", true));
+    await waitFor(() => expect(trocar).toHaveBeenCalledWith("D:\\Jogos\\Pasta Escolhida\\cofre", true));
     const secao = screen.getByRole("region", { name: "Cofre" });
-    expect(await within(secao).findByText("D:\\Jogos\\Pasta Escolhida")).toBeInTheDocument();
+    expect(await within(secao).findByText("D:\\Jogos\\Pasta Escolhida\\cofre")).toBeInTheDocument();
   });
 
   it("Sobre mostra a versão e os créditos", async () => {

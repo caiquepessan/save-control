@@ -204,8 +204,9 @@ export function createAppStore(backend: Backend) {
       try {
         const pasta = await backend.escolherPasta(titulo);
         if (!pasta) return null;
+        // A pasta do cofre pode ser a subpasta "cofre" da escolhida (pasta com outros arquivos).
         const sonda = await backend.inspecionarCofre(pasta);
-        return { pasta, existe: sonda.exists, versoes: sonda.versions };
+        return { pasta: sonda.path, existe: sonda.exists, versoes: sonda.versions };
       } catch (e) {
         get().avisar("erro", ErroApp.de(e).message);
         return null;

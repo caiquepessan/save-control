@@ -131,8 +131,10 @@ impl CoverStore {
 
     /// A própria (se o arquivo existe) > a da Steam (se já baixada) > a gerada.
     pub fn choice(&self, steam_app_id: Option<u32>, settings: &LocalGameSettings) -> CoverChoice {
-        if let Some(custom) = settings.cover.as_ref().filter(|c| c.is_file()) {
-            return CoverChoice::Custom(custom.clone());
+        // Guardada pelo nome do arquivo (relativa à pasta de capas); caminhos completos antigos também valem.
+        let custom = settings.cover.as_ref().map(|c| if c.is_relative() { self.dir.join(c) } else { c.clone() });
+        if let Some(custom) = custom.filter(|c| c.is_file()) {
+            return CoverChoice::Custom(custom);
         }
         if let Some(path) = steam_app_id.map(|id| self.steam_path(id)).filter(|p| p.is_file()) {
             return CoverChoice::Steam(path);

@@ -107,6 +107,8 @@ export const T = {
     titulo: (versao: string) => `Restaurar "${versao}"?`,
     corpo: (jogo: string, quando: string) =>
       `O save do ${jogo} volta a como estava ${quando}. Antes disso, o save atual é guardado no cofre, então dá pra desfazer.`,
+    corpoOutraPasta:
+      "Os arquivos desta versão vão para a pasta escolhida, e o save do jogo não muda. Se a pasta já tiver arquivos com o mesmo nome, eles são guardados no cofre antes.",
     versao: "Versão",
     arquivos: "Arquivos",
     destino: "Destino",
@@ -264,6 +266,7 @@ export const T = {
     encontrados: (n: number) => `Encontramos ${n} ${plural(n, "jogo", "jogos")} com save`,
     nenhum: "Ainda não encontramos saves",
     nenhumTexto: "Dá para escanear de novo depois ou adicionar um jogo à mão na biblioteca.",
+    dicaPastas: "Recomps, ports ou emuladores numa pasta sua (ex.: D:\\Jogos)? Adicione a pasta em Configurações → Pastas de jogos.",
     backupDeTudo: "Fazer o primeiro backup de tudo (recomendado)",
     agoraNao: "Agora não",
     fazendoBackup: "Fazendo o primeiro backup…",

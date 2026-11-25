@@ -127,7 +127,9 @@ function Fluxo({ pedido }: { pedido: PedidoRestauracao }) {
 
   const { previa, restaurando } = fase;
   const maisAntiga = !!versoes?.length && versoes[versoes.length - 1].fileName === previa.snapshot.fileName;
-  const t = textosDaRestauracao(previa, jogo, { maisAntiga, soArquivos: pedido.soArquivos?.length });
+  // Pasta escolhida por "Restaurar em outra pasta…" (a de "Onde restaurar?" fica lembrada e é a do jogo).
+  const outraPasta = Object.keys(destinos).length > 0 && !lembrar;
+  const t = textosDaRestauracao(previa, jogo, { maisAntiga, soArquivos: pedido.soArquivos?.length, outraPasta });
   return (
     <Modal rotulo={t.titulo} onFechar={cancelar}>
       <div className="mt">
