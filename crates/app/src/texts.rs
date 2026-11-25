@@ -9,6 +9,8 @@ pub const CONFIG_RESET: &str = "As configurações estavam danificadas e voltara
 
 pub const BACKUP_APAGADO: &str = "Backup apagado";
 
+pub const COFRE_VOLTOU: &str = "O cofre voltou. O backup automático continua de onde parou.";
+
 pub const TEMPO_SEGUNDOS: &str = "Use um valor entre 5 e 600 segundos.";
 
 pub const TEMPO_MINUTOS: &str = "Use um valor entre 5 e 120 minutos.";

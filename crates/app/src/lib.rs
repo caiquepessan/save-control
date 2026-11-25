@@ -2,6 +2,7 @@
 //! tipos da interface e o serviço que guarda a Engine.
 
 pub mod activity;
+pub mod auto_worker;
 pub mod config;
 pub mod covers;
 pub mod dto;

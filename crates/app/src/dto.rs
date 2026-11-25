@@ -153,6 +153,42 @@ impl From<AutoTimes> for AutoTimesView {
     }
 }
 
+/// Situação do backup automático (cartão do cofre e ícone da bandeja).
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize, TS)]
+#[serde(rename_all = "camelCase")]
+#[ts(export)]
+pub enum AutoState {
+    Ativo,
+    Pausado,
+    Desligado,
+    CofreFora,
+    /// Sem a Engine aberta (primeiro uso, cofre sumido, falhou).
+    Parado,
+}
+
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize, TS)]
+#[serde(rename_all = "camelCase")]
+#[ts(export)]
+pub struct LastBackupView {
+    pub title: String,
+    pub at: String,
+}
+
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize, TS)]
+#[serde(rename_all = "camelCase")]
+#[ts(export)]
+pub struct AutoStatusView {
+    pub state: AutoState,
+    /// Até quando está pausado (sem pausa, ou "até reabrir": null).
+    pub paused_until: Option<String>,
+    /// Quantos jogos o automático vigia.
+    #[ts(type = "number")]
+    pub watching: usize,
+    /// Fazendo backup agora.
+    pub busy: bool,
+    pub last_backup: Option<LastBackupView>,
+}
+
 /// Resultado de um backup automático (para a notificação e a Atividade).
 #[derive(Clone, Debug, PartialEq, Serialize, TS)]
 #[serde(rename_all = "camelCase")]

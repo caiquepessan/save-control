@@ -354,7 +354,7 @@ impl AppService {
     }
 
     /// O cofre está lá agora (o HD pode ter sido desligado com o app aberto).
-    fn vault_available(&self) -> bool {
+    pub fn vault_available(&self) -> bool {
         self.vault_dir().join("cofre.json").is_file()
     }
 
@@ -854,6 +854,17 @@ impl AppService {
 
     pub fn changed_game_ids(&self) -> Vec<String> {
         self.engine.as_ref().map(|e| e.changed_games()).unwrap_or_default()
+    }
+
+    /// Jogos que o automático vigia (com pasta de save e automático ligado) e as pastas deles.
+    pub fn auto_watch_list(&self) -> Vec<(String, Vec<PathBuf>)> {
+        let Some(engine) = &self.engine else { return Vec::new() };
+        engine
+            .games()
+            .iter()
+            .filter(|g| !g.vault_only && !g.save_roots.is_empty() && self.can_back_up(&g.id))
+            .map(|g| (g.id.clone(), g.save_roots.iter().map(|r| r.path.clone()).collect()))
+            .collect()
     }
 
     /// Para cada jogo encontrado: aberto, fechado ou "não dá para saber".
