@@ -47,6 +47,7 @@ impl Fetcher for UmaVez {
 fn engine(t: &Path, nome: &str) -> (SystemPaths, Engine) {
     let s = SystemPaths::under_home(&t.join(format!("home-{nome}")), nome);
     let cfg = EngineConfig { data_dir: t.join(format!("dados-{nome}")), vault_dir: t.join("cofre"), include_config: false };
+    savecontrol_core::vault::Vault::create(&cfg.vault_dir).unwrap();
     let e = Engine::open(cfg, s.clone(), Box::new(reg(nome))).unwrap();
     (s, e)
 }
@@ -227,7 +228,7 @@ fn resumo_do_cofre() {
     assert_eq!(norm(e.vault_dir()), norm(&t.path().join("cofre")));
     assert!(r.available);
     assert_eq!(r.versions, 2);
-    let v = Vault::open_or_create(&t.path().join("cofre")).unwrap();
+    let v = Vault::create(&t.path().join("cofre")).unwrap();
     let soma: u64 = e.history(&g.id).iter().map(|x| std::fs::metadata(x.zip_path(&v)).unwrap().len()).sum();
     assert_eq!(r.zip_bytes, soma);
     assert!(r.disk_total.is_some() && r.disk_free.is_some());

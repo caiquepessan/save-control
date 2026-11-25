@@ -37,7 +37,7 @@ fn meta(machine: MachineIdentity) -> SnapshotMeta {
 fn com_backup(t: &Path, machine: MachineIdentity, file_name: &str) -> (Vault, PathBuf, PathBuf, SnapshotMeta) {
     let src = t.join("src");
     write(&src.join("slot1.sav"), b"um");
-    let v = Vault::open_or_create(&t.join("cofre")).unwrap();
+    let v = Vault::create(&t.join("cofre")).unwrap();
     let dir = v.game_dir("pc:Jogo A", "Jogo A").unwrap();
     let sources = [SourceFile { abs_path: src.join("slot1.sav"), root_alias: "r0".into(), rel_path: "slot1.sav".into() }];
     let (zip, m) = write_snapshot(&dir, file_name, meta(machine), &sources, &NoWait).unwrap();

@@ -625,7 +625,7 @@ impl AppService {
             if !create {
                 return Err(ErrorView::new(ErrorKind::NaoEncontrado, "Não há um cofre nessa pasta."));
             }
-            Vault::open_or_create(&dir)?;
+            Vault::create(&dir)?;
         }
         self.config.vault_dir = self.stored_vault(&dir);
         self.save_config()?;
@@ -669,7 +669,7 @@ impl AppService {
 
     pub fn finish_first_run(&mut self, vault_dir: &Path) -> Res<AppStateView> {
         let vault_dir = vault_target(vault_dir)?;
-        Vault::open_or_create(&vault_dir)?;
+        Vault::create(&vault_dir)?;
         self.config.vault_dir = self.stored_vault(&vault_dir);
         self.config.first_run_done = true;
         self.save_config()?;

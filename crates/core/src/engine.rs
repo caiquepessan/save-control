@@ -103,7 +103,7 @@ impl Engine {
         // Base corrompida não impede o app de abrir: só fica sem jogos de PC.
         let manifest = store.load().ok().flatten();
         let local = LocalState::load(&cfg.data_dir.join("jogos.json"))?;
-        let vault = Vault::open_or_create(&cfg.vault_dir)?;
+        let vault = Vault::open(&cfg.vault_dir)?;
         let machine = MachineIdentity::detect(&*reg);
         vault.cleanup_partials(&machine, Utc::now())?;
         let index_path = cfg.data_dir.join("indice").join(format!("{}.json", vault.id));

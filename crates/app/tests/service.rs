@@ -197,7 +197,7 @@ fn trocar_cofre_para_pasta_com_cofre_existente_abre_ele() {
     let w = mundo();
     let mut svc = pronto(&w);
     let outro = w.t.path().join("OutroCofre");
-    Vault::open_or_create(&outro).unwrap();
+    Vault::create(&outro).unwrap();
     let st = svc.change_vault(&outro, false).unwrap();
     assert_eq!(st.phase, AppPhase::Pronto);
     assert_eq!(st.vault_dir, outro.display().to_string());

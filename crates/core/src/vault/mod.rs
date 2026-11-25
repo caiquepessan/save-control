@@ -32,15 +32,26 @@ pub struct Vault {
 }
 
 impl Vault {
-    pub fn open_or_create(root: &Path) -> Result<Vault> {
+    /// Abre um cofre que já existe. Sem `cofre.json` (HD desligado, pasta
+    /// errada) o cofre está indisponível: nunca cria nada no lugar dele.
+    pub fn open(root: &Path) -> Result<Vault> {
+        let file = root.join(VAULT_FILE);
+        if !file.is_file() {
+            return Err(Error::VaultUnavailable(root.to_path_buf()));
+        }
+        let text = std::fs::read_to_string(&file).map_err(io(&file))?;
+        let v: VaultFile = serde_json::from_str(&text).map_err(|e| Error::Parse(format!("cofre.json: {e}")))?;
+        if v.format > FORMAT {
+            return Err(Error::FormatTooNew { found: v.format, supported: FORMAT });
+        }
+        Ok(Vault { root: root.to_path_buf(), id: v.id })
+    }
+
+    /// Cria um cofre novo em `root` (se já existe um lá, só abre).
+    pub fn create(root: &Path) -> Result<Vault> {
         let file = root.join(VAULT_FILE);
         if file.is_file() {
-            let text = std::fs::read_to_string(&file).map_err(io(&file))?;
-            let v: VaultFile = serde_json::from_str(&text).map_err(|e| Error::Parse(format!("cofre.json: {e}")))?;
-            if v.format > FORMAT {
-                return Err(Error::FormatTooNew { found: v.format, supported: FORMAT });
-            }
-            return Ok(Vault { root: root.to_path_buf(), id: v.id });
+            return Vault::open(root);
         }
         std::fs::create_dir_all(root).map_err(io(root))?;
         let v = VaultFile { format: FORMAT, id: uuid::Uuid::new_v4().simple().to_string() };

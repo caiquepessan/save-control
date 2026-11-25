@@ -70,6 +70,7 @@ fn base() -> UmaVez {
 fn engine(t: &Path, nome: &str) -> (SystemPaths, Engine) {
     let s = SystemPaths::under_home(&t.join(format!("home-{nome}")), nome);
     let cfg = EngineConfig { data_dir: t.join(format!("dados-{nome}")), vault_dir: t.join("cofre"), include_config: false };
+    savecontrol_core::vault::Vault::create(&cfg.vault_dir).unwrap();
     let e = Engine::open(cfg, s.clone(), Box::new(reg(nome))).unwrap();
     (s, e)
 }
@@ -77,7 +78,7 @@ fn engine(t: &Path, nome: &str) -> (SystemPaths, Engine) {
 /// Conteúdo de um arquivo dentro do backup "antes de restaurar" mais novo do jogo.
 fn no_seguro(e: &Engine, vault_dir: &Path, id: &str, alias: &str, rel: &str, tmp: &Path) -> String {
     let seg = e.history(id).into_iter().find(|x| x.kind == SnapshotKind::PreRestore).expect("sem antes-de-restaurar");
-    let v = Vault::open_or_create(vault_dir).unwrap();
+    let v = Vault::create(vault_dir).unwrap();
     extract_file(&seg.zip_path(&v), alias, rel, tmp).unwrap();
     ler(tmp)
 }
@@ -96,7 +97,7 @@ struct Mundo {
 fn mundo() -> Mundo {
     let t = tempfile::tempdir().unwrap();
     let s = SystemPaths::under_home(&t.path().join("home"), "teste");
-    let vault = Vault::open_or_create(&t.path().join("cofre")).unwrap();
+    let vault = Vault::create(&t.path().join("cofre")).unwrap();
     let pc = MachineIdentity { id: "aaaa111122223333".into(), pc_name: "PC".into(), user_name: "teste".into() };
     Mundo { t, s, vault, index: VaultIndex::default(), hashes: HashCache::default(), pc }
 }
@@ -578,7 +579,7 @@ fn cofre_e_backup_de_formato_novo_sao_recusados() {
     let cofre = t.path().join("cofre");
     std::fs::create_dir_all(&cofre).unwrap();
     std::fs::write(cofre.join("cofre.json"), br#"{"format": 99, "id": "x"}"#).unwrap();
-    assert!(matches!(Vault::open_or_create(&cofre), Err(Error::FormatTooNew { found: 99, .. })));
+    assert!(matches!(Vault::open(&cofre), Err(Error::FormatTooNew { found: 99, .. })));
 
     let w = mundo();
     let src = w.t.path().join("src");

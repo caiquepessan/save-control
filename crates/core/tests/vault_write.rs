@@ -92,7 +92,7 @@ fn limpa_nome_da_pasta() {
 fn escreve_confere_e_le_o_zip() {
     let t = tempfile::tempdir().unwrap();
     let src = origem(t.path());
-    let v = Vault::open_or_create(&t.path().join("cofre")).unwrap();
+    let v = Vault::create(&t.path().join("cofre")).unwrap();
     let dir = v.game_dir("pc:Jogo A", "Jogo A").unwrap();
     let name = snapshot_file_name(local(2026, 11, 24, 10, 2, 11), &pc(), SnapshotKind::Manual);
     let (path, m) = write_snapshot(&dir, &name, meta(), &sources(&src), &NoWait).unwrap();
@@ -110,7 +110,7 @@ fn escreve_confere_e_le_o_zip() {
 #[test]
 fn pastas_de_jogos_diferentes_com_mesmo_nome() {
     let t = tempfile::tempdir().unwrap();
-    let v = Vault::open_or_create(&t.path().join("cofre")).unwrap();
+    let v = Vault::create(&t.path().join("cofre")).unwrap();
     let a = v.game_dir("pc:Jogo", "Jogo").unwrap();
     v.write_descriptor(
         &a,
@@ -147,7 +147,7 @@ impl CopyHooks for Muda {
 fn arquivo_instavel_desiste_limpo() {
     let t = tempfile::tempdir().unwrap();
     let src = origem(t.path());
-    let v = Vault::open_or_create(&t.path().join("cofre")).unwrap();
+    let v = Vault::create(&t.path().join("cofre")).unwrap();
     let dir = v.game_dir("pc:Jogo A", "Jogo A").unwrap();
     let err = write_snapshot(&dir, "x_PC-AAAA_manual.zip", meta(), &sources(&src), &Muda(src.join("slot1.sav")))
         .unwrap_err();
@@ -162,7 +162,7 @@ fn arquivo_travado_desiste_limpo() {
     let t = tempfile::tempdir().unwrap();
     let src = origem(t.path());
     let _trava = std::fs::OpenOptions::new().read(true).share_mode(0).open(src.join("slot1.sav")).unwrap();
-    let v = Vault::open_or_create(&t.path().join("cofre")).unwrap();
+    let v = Vault::create(&t.path().join("cofre")).unwrap();
     let dir = v.game_dir("pc:Jogo A", "Jogo A").unwrap();
     let err = write_snapshot(&dir, "x_PC-AAAA_manual.zip", meta(), &sources(&src), &NoWait).unwrap_err();
     assert!(matches!(err, Error::FileLocked(_)));
@@ -172,7 +172,7 @@ fn arquivo_travado_desiste_limpo() {
 #[test]
 fn limpa_so_parciais_deste_pc_ou_velhos() {
     let t = tempfile::tempdir().unwrap();
-    let v = Vault::open_or_create(&t.path().join("cofre")).unwrap();
+    let v = Vault::create(&t.path().join("cofre")).unwrap();
     let dir = v.game_dir("pc:Jogo A", "Jogo A").unwrap();
     let meu = dir.join(format!("2026-11-24_10-00-00_{}_auto.zip.parcial", pc().label()));
     let outro = dir.join("2026-11-24_10-00-00_OUTRO-1111_auto.zip.parcial");

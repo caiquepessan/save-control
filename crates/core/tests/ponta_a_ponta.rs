@@ -39,6 +39,7 @@ fn base() -> UmaVez {
 fn pc(t: &Path, nome: &str) -> (SystemPaths, EngineConfig, FakeRegistry) {
     let s = SystemPaths::under_home(&t.join(format!("home-{nome}")), nome);
     let cfg = EngineConfig { data_dir: t.join(format!("dados-{nome}")), vault_dir: t.join("cofre"), include_config: false };
+    savecontrol_core::vault::Vault::create(&cfg.vault_dir).unwrap();
     let mut reg = FakeRegistry::default();
     reg.set(Hive::LocalMachine, r"SOFTWARE\Microsoft\Cryptography", "MachineGuid", &format!("guid-{nome}"));
     (s, cfg, reg)

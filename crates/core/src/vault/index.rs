@@ -74,23 +74,25 @@ impl VaultIndex {
     }
 
     /// Lê só os zips novos; ignora `.parcial` e nomes fora do padrão; tira os apagados.
+    /// Com o cofre fora (HD desligado), dá erro e deixa o índice como estava:
+    /// sem isso, todo backup "sumiria" do índice até o cofre voltar.
     pub fn refresh(&mut self, vault: &Vault) -> Result<()> {
+        vault.ensure_available()?;
+        let dirs = std::fs::read_dir(&vault.root).map_err(|_| Error::VaultUnavailable(vault.root.clone()))?;
         self.vault_id.clone_from(&vault.id);
         let mut seen: Vec<(String, String)> = Vec::new();
-        if let Ok(dirs) = std::fs::read_dir(&vault.root) {
-            for dir in dirs.flatten().filter(|d| d.path().is_dir()) {
-                let dir_name = dir.file_name().to_string_lossy().into_owned();
-                let Ok(files) = std::fs::read_dir(dir.path()) else { continue };
-                for f in files.flatten() {
-                    let file_name = f.file_name().to_string_lossy().into_owned();
-                    let Some(kind) = SnapshotKind::from_file_name(&file_name) else { continue };
-                    seen.push((dir_name.clone(), file_name.clone()));
-                    if self.entries.iter().any(|e| e.dir_name == dir_name && e.file_name == file_name) {
-                        continue;
-                    }
-                    if let Ok(meta) = read_meta(&f.path()) {
-                        self.entries.push(entry_from_meta(&meta, &dir_name, &file_name, kind));
-                    }
+        for dir in dirs.flatten().filter(|d| d.path().is_dir()) {
+            let dir_name = dir.file_name().to_string_lossy().into_owned();
+            let Ok(files) = std::fs::read_dir(dir.path()) else { continue };
+            for f in files.flatten() {
+                let file_name = f.file_name().to_string_lossy().into_owned();
+                let Some(kind) = SnapshotKind::from_file_name(&file_name) else { continue };
+                seen.push((dir_name.clone(), file_name.clone()));
+                if self.entries.iter().any(|e| e.dir_name == dir_name && e.file_name == file_name) {
+                    continue;
+                }
+                if let Ok(meta) = read_meta(&f.path()) {
+                    self.entries.push(entry_from_meta(&meta, &dir_name, &file_name, kind));
                 }
             }
         }

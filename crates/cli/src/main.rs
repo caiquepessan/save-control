@@ -99,6 +99,8 @@ fn size_text(bytes: u64) -> String {
 fn main() -> anyhow::Result<()> {
     let cli = Cli::parse();
     let sys = SystemPaths::detect()?;
+    // O CLI cria o cofre se ainda não existir (a Engine só abre cofres que existem).
+    savecontrol_core::vault::Vault::create(&cli.cofre).context("não foi possível criar o cofre")?;
     let cfg = EngineConfig { data_dir: cli.dados, vault_dir: cli.cofre, include_config: false };
     let mut eng = Engine::open(cfg, sys, Box::new(WinRegistry)).context("não foi possível abrir o cofre")?;
 
