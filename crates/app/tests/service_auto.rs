@@ -284,3 +284,27 @@ fn estado_de_aberto_por_jogo() {
     let de = |id: &str| estados.iter().find(|(x, _)| x == id).map(|(_, r)| *r);
     assert_eq!((de(&com), de(&fechado), de(&sem)), (Some(Running::Yes), Some(Running::No), Some(Running::Unknown)));
 }
+
+/// Aviso de fora do serviço (ex.: "Iniciar com o Windows" vinha de um HD
+/// removível) aparece junto dos avisos de abertura.
+#[test]
+fn aviso_de_fora_aparece_ao_abrir() {
+    let w = mundo();
+    let mut s = pronto(&w);
+    s.add_warning(texts::inicio_removivel(r"E:\SaveControl\SaveControl.exe"));
+    let avisos = s.state().warnings;
+    assert!(avisos.iter().any(|a| a.contains(r"E:\SaveControl\SaveControl.exe")), "{avisos:?}");
+}
+
+/// A janela fecha para a bandeja e é criada de novo: os avisos de abertura
+/// aparecem só na primeira.
+#[test]
+fn avisos_de_abertura_so_na_primeira_janela() {
+    let w = mundo();
+    let mut s = pronto(&w);
+    s.add_warning("aviso de abertura".into());
+    assert_eq!(s.opening_state().warnings, vec!["aviso de abertura".to_string()]);
+    let de_novo = s.opening_state();
+    assert!(de_novo.warnings.is_empty(), "{:?}", de_novo.warnings);
+    assert_eq!(de_novo.phase, AppPhase::Pronto);
+}

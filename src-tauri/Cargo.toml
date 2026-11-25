@@ -13,7 +13,7 @@ savecontrol-app = { version = "0.1.0", path = "../crates/app" }
 savecontrol-core = { version = "0.1.0", path = "../crates/core" }
 serde = { version = "1.0.229", features = ["derive"] }
 serde_json = "1.0.154"
-tauri = { version = "2.12.7", features = ["protocol-asset"] }
+tauri = { version = "2.12.7", features = ["protocol-asset", "tray-icon", "image-png"] }
 tauri-plugin-dialog = "2.8.4"
 tauri-plugin-opener = "2.7.3"
 tauri-plugin-single-instance = "2.5.5"
@@ -22,4 +22,5 @@ tauri-plugin-single-instance = "2.5.5"
 tauri-build = { version = "2.7.6", features = [] }
 
 [target."cfg(windows)".dependencies]
+tauri-winrt-notification = "0.8.1"
 windows-sys = { version = "0.61.2", features = ["Win32_UI_WindowsAndMessaging", "Win32_Foundation"] }

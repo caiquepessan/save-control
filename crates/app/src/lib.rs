@@ -3,6 +3,7 @@
 
 pub mod activity;
 pub mod auto_worker;
+pub mod bandeja;
 pub mod config;
 pub mod covers;
 pub mod dto;

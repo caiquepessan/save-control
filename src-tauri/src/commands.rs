@@ -4,9 +4,12 @@
 use std::collections::BTreeMap;
 use std::path::{Path, PathBuf};
 use std::sync::atomic::Ordering;
+use std::time::Duration;
 
 use chrono::Utc;
-use savecontrol_app::covers::UreqCoverFetcher;
+use savecontrol_app::activity::ActivityEntry;
+use savecontrol_app::auto_worker::Command;
+use savecontrol_app::covers::{CoverStore, UreqCoverFetcher};
 use savecontrol_app::dto::*;
 use savecontrol_app::service::AppService;
 use savecontrol_core::manifest::store::HttpFetcher;
@@ -16,7 +19,10 @@ use tauri::{AppHandle, Emitter, Manager, State};
 use tauri_plugin_dialog::DialogExt;
 use tauri_plugin_opener::OpenerExt;
 
-use crate::Shared;
+use crate::{Shared, travar};
+
+/// Ícone das notificações do Windows (copiado para a pasta de dados ao ligar).
+const ICONE_NOTIFICACAO: &[u8] = include_bytes!("../icons/128x128.png");
 
 type Res<T> = Result<T, ErrorView>;
 
@@ -46,19 +52,11 @@ struct CapaPronta {
 }
 
 /// Baixa as capas da Steam que faltam, uma por vez, sem travar o serviço.
-fn baixar_capas(app: &AppHandle, state: &State<'_, Shared>) {
-    if state.covers_running.swap(true, Ordering::SeqCst) {
+fn baixar_capas(app: &AppHandle, state: &State<'_, Shared>, lista: Vec<(String, u32)>, store: CoverStore) {
+    if lista.is_empty() || state.covers_running.swap(true, Ordering::SeqCst) {
         return;
     }
-    let (lista, store) = {
-        let svc = state.svc.lock().unwrap_or_else(|e| e.into_inner());
-        (svc.steam_covers_to_fetch(), svc.cover_store())
-    };
     let running = state.covers_running.clone();
-    if lista.is_empty() {
-        running.store(false, Ordering::SeqCst);
-        return;
-    }
     let app = app.clone();
     std::thread::spawn(move || {
         let fetcher = UreqCoverFetcher::default();
@@ -71,9 +69,19 @@ fn baixar_capas(app: &AppHandle, state: &State<'_, Shared>) {
     });
 }
 
+/// Avisa o trabalhador do automático que jogos ou ajustes mudaram (pastas
+/// vigiadas, tempos, chaves).
+fn mudou(state: &State<'_, Shared>) {
+    state.mandar(Command::ConfigChanged);
+}
+
+fn erro_do_registro(e: std::io::Error) -> ErrorView {
+    erro(format!("Não foi possível mudar o registro do Windows: {e}"))
+}
+
 #[tauri::command]
 pub async fn estado(state: State<'_, Shared>) -> Res<AppStateView> {
-    com_servico(&state, |s| Ok(s.state())).await
+    com_servico(&state, |s| Ok(s.opening_state())).await
 }
 
 #[tauri::command]
@@ -83,8 +91,13 @@ pub async fn biblioteca(state: State<'_, Shared>) -> Res<LibraryView> {
 
 #[tauri::command]
 pub async fn escanear(app: AppHandle, state: State<'_, Shared>) -> Res<LibraryView> {
-    let lib = com_servico(&state, |s| s.scan()).await?;
-    baixar_capas(&app, &state);
+    let (lib, capas, store) = com_servico(&state, |s| {
+        let (lib, capas) = s.scan_with_covers()?;
+        Ok((lib, capas, s.cover_store()))
+    })
+    .await?;
+    baixar_capas(&app, &state, capas, store);
+    mudou(&state);
     Ok(lib)
 }
 
@@ -174,8 +187,13 @@ pub async fn escolher_imagem(app: AppHandle) -> Res<Option<String>> {
 
 #[tauri::command]
 pub async fn adicionar_jogo(app: AppHandle, state: State<'_, Shared>, pedido: AddGameRequest) -> Res<GameView> {
-    let jogo = com_servico(&state, move |s| s.add_game(pedido)).await?;
-    baixar_capas(&app, &state);
+    let (jogo, capas, store) = com_servico(&state, move |s| {
+        let jogo = s.add_game(pedido)?;
+        Ok((jogo, s.steam_covers_to_fetch(), s.cover_store()))
+    })
+    .await?;
+    baixar_capas(&app, &state, capas, store);
+    mudou(&state);
     Ok(jogo)
 }
 
@@ -186,12 +204,16 @@ pub async fn renomear_jogo(state: State<'_, Shared>, id: String, titulo: Option<
 
 #[tauri::command]
 pub async fn ignorar_jogo(state: State<'_, Shared>, id: String, ignorado: bool) -> Res<()> {
-    com_servico(&state, move |s| s.set_ignored(&id, ignorado)).await
+    com_servico(&state, move |s| s.set_ignored(&id, ignorado)).await?;
+    mudou(&state);
+    Ok(())
 }
 
 #[tauri::command]
 pub async fn definir_pasta_do_jogo(state: State<'_, Shared>, id: String, pasta: Option<String>) -> Res<()> {
-    com_servico(&state, move |s| s.set_game_dir(&id, pasta.map(PathBuf::from))).await
+    com_servico(&state, move |s| s.set_game_dir(&id, pasta.map(PathBuf::from))).await?;
+    mudou(&state);
+    Ok(())
 }
 
 #[tauri::command]
@@ -206,12 +228,17 @@ pub async fn esquecer_destino(state: State<'_, Shared>, id: String, template: St
 
 #[tauri::command]
 pub async fn remover_jogo_manual(state: State<'_, Shared>, id: String) -> Res<()> {
-    com_servico(&state, move |s| s.remove_custom_game(&id)).await
+    com_servico(&state, move |s| s.remove_custom_game(&id)).await?;
+    mudou(&state);
+    Ok(())
 }
 
 #[tauri::command]
 pub async fn configuracoes(state: State<'_, Shared>) -> Res<SettingsView> {
-    com_servico(&state, |s| s.settings()).await
+    let mut ajustes = com_servico(&state, |s| s.settings()).await?;
+    // A fonte da verdade do "Iniciar com o Windows" é a entrada no registro.
+    ajustes.start_with_windows = travar(&state.integracao).iniciar_com_windows();
+    Ok(ajustes)
 }
 
 #[tauri::command]
@@ -231,7 +258,9 @@ pub async fn definir_capas_steam(state: State<'_, Shared>, ligado: bool) -> Res<
 
 #[tauri::command]
 pub async fn trocar_cofre(state: State<'_, Shared>, pasta: String, criar: bool) -> Res<AppStateView> {
-    com_servico(&state, move |s| s.change_vault(Path::new(&pasta), criar)).await
+    let estado = com_servico(&state, move |s| s.change_vault(Path::new(&pasta), criar)).await?;
+    mudou(&state);
+    Ok(estado)
 }
 
 #[tauri::command]
@@ -257,4 +286,122 @@ pub async fn concluir_primeiro_uso(state: State<'_, Shared>, pasta_do_cofre: Str
 #[tauri::command]
 pub async fn jogos_abertos(state: State<'_, Shared>) -> Res<Vec<String>> {
     com_servico(&state, |s| Ok(s.running_ids(&SystemProbe))).await
+}
+
+#[tauri::command]
+pub async fn situacao_automatico(state: State<'_, Shared>) -> Res<AutoStatusView> {
+    Ok(travar(&state.status).clone())
+}
+
+#[tauri::command]
+pub async fn definir_automatico(state: State<'_, Shared>, ligado: bool) -> Res<()> {
+    com_servico(&state, move |s| s.set_auto_backup(ligado)).await?;
+    mudou(&state);
+    Ok(())
+}
+
+/// Pausa o automático por `minutos` (sem valor: até reabrir o app).
+#[tauri::command]
+pub async fn pausar_automatico(state: State<'_, Shared>, minutos: Option<u32>) -> Res<()> {
+    state.mandar(Command::Pause(minutos.map(|m| Duration::from_secs(u64::from(m) * 60))));
+    Ok(())
+}
+
+#[tauri::command]
+pub async fn retomar_automatico(state: State<'_, Shared>) -> Res<()> {
+    state.mandar(Command::Resume);
+    Ok(())
+}
+
+#[tauri::command]
+pub async fn definir_automatico_do_jogo(state: State<'_, Shared>, id: String, ligado: bool) -> Res<()> {
+    com_servico(&state, move |s| s.set_game_auto(&id, ligado)).await?;
+    mudou(&state);
+    Ok(())
+}
+
+#[tauri::command]
+pub async fn definir_retencao(state: State<'_, Shared>, politica: RetentionView) -> Res<()> {
+    com_servico(&state, move |s| s.set_retention(politica)).await
+}
+
+/// Sem política: o jogo volta a usar o padrão.
+#[tauri::command]
+pub async fn definir_retencao_do_jogo(state: State<'_, Shared>, id: String, politica: Option<RetentionView>) -> Res<()> {
+    com_servico(&state, move |s| s.set_game_retention(&id, politica)).await
+}
+
+#[tauri::command]
+pub async fn definir_tempos_do_automatico(state: State<'_, Shared>, tempos: AutoTimesView) -> Res<()> {
+    com_servico(&state, move |s| s.set_auto_times(tempos)).await?;
+    mudou(&state);
+    Ok(())
+}
+
+/// Sem valor: o jogo segue o ajuste geral.
+#[tauri::command]
+pub async fn definir_incluir_config_do_jogo(state: State<'_, Shared>, id: String, valor: Option<bool>) -> Res<()> {
+    com_servico(&state, move |s| s.set_game_include_config(&id, valor)).await?;
+    mudou(&state);
+    Ok(())
+}
+
+#[tauri::command]
+pub async fn fixar_backup(state: State<'_, Shared>, id: String, arquivo: String, fixado: bool) -> Res<SnapshotView> {
+    com_servico(&state, move |s| s.pin_backup(&id, &arquivo, fixado)).await
+}
+
+#[tauri::command]
+pub async fn apagar_backup(state: State<'_, Shared>, id: String, arquivo: String) -> Res<()> {
+    com_servico(&state, move |s| s.delete_backup(&id, &arquivo)).await
+}
+
+/// Os eventos mais novos da Atividade (padrão: 200).
+#[tauri::command]
+pub async fn atividade(state: State<'_, Shared>, limite: Option<usize>) -> Res<Vec<ActivityEntry>> {
+    com_servico(&state, move |s| Ok(s.activity(limite.unwrap_or(200)))).await
+}
+
+#[tauri::command]
+pub async fn definir_fechar_para_bandeja(state: State<'_, Shared>, ligado: bool) -> Res<()> {
+    com_servico(&state, move |s| s.set_close_to_tray(ligado)).await?;
+    state.fechar_para_bandeja.store(ligado, Ordering::SeqCst);
+    Ok(())
+}
+
+#[tauri::command]
+pub async fn definir_iniciar_com_windows(state: State<'_, Shared>, ligado: bool) -> Res<()> {
+    let r = travar(&state.integracao).definir_iniciar_com_windows(ligado);
+    r.map_err(erro_do_registro)
+}
+
+/// Ligar registra o nome e o ícone do app para as notificações do Windows;
+/// desligar apaga esse registro.
+#[tauri::command]
+pub async fn definir_notificacoes(state: State<'_, Shared>, ligado: bool) -> Res<()> {
+    let r = {
+        let mut integracao = travar(&state.integracao);
+        if ligado { integracao.registrar_notificacoes(ICONE_NOTIFICACAO) } else { integracao.remover_notificacoes() }
+    };
+    r.map_err(erro_do_registro)?;
+    com_servico(&state, move |s| s.set_notifications(ligado)).await?;
+    state.notificacoes.store(ligado, Ordering::SeqCst);
+    Ok(())
+}
+
+/// "Remover registros do Windows": apaga as duas entradas (início com o
+/// Windows e notificações) e desliga as notificações.
+#[tauri::command]
+pub async fn remover_registros_do_windows(state: State<'_, Shared>) -> Res<()> {
+    let r = travar(&state.integracao).remover_tudo();
+    r.map_err(erro_do_registro)?;
+    com_servico(&state, |s| s.set_notifications(false)).await?;
+    state.notificacoes.store(false, Ordering::SeqCst);
+    Ok(())
+}
+
+/// O jogo que a janela recém-criada deve abrir (clique na notificação), uma vez só.
+#[tauri::command]
+pub async fn jogo_para_abrir(state: State<'_, Shared>) -> Res<Option<String>> {
+    Ok(travar(&state.jogo_pendente).take())
 }

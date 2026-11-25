@@ -275,6 +275,20 @@ impl AppService {
         }
     }
 
+    /// Aviso que vem de fora do serviço (ex.: "Iniciar com o Windows"
+    /// corrigido ao abrir); aparece junto dos avisos de abertura.
+    pub fn add_warning(&mut self, text: String) {
+        self.warnings.push(text);
+    }
+
+    /// O estado para uma janela que abre. A janela fecha para a bandeja e é
+    /// criada de novo, então os avisos de abertura vão só para a primeira.
+    pub fn opening_state(&mut self) -> AppStateView {
+        let state = self.state();
+        self.warnings.clear();
+        state
+    }
+
     pub fn state(&mut self) -> AppStateView {
         let phase = self.phase();
         AppStateView {
