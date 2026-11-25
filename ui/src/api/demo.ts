@@ -256,21 +256,34 @@ const ESPECIAIS: Record<string, Partial<SnapshotView>[]> = {
   [IDS.academia]: [{}, { pcName: "NOTEBOOK-SALA", fromThisPc: false }],
 };
 
-/** A Atividade de exemplo, da mais nova à mais velha. */
+/** A Atividade de exemplo (10 eventos de vários tipos e dias), da mais nova à mais velha. */
 function criarAtividade(agora: number): ActivityView[] {
   const ha = (min: number) => new Date(agora - min * 60_000).toISOString();
+  const H = 60;
+  const D = 24 * H;
   return [
     { at: ha(4), kind: "backupAuto", gameId: IDS.reino, title: "Reino Esmeralda: A Flauta do Tempo", detail: "7 arquivos · 1,2 MB" },
-    { at: ha(2 * 60), kind: "backupManual", gameId: IDS.academia, title: "Academia Arcana", detail: "2 arquivos · 14,0 MB" },
     {
-      at: ha(3 * 60),
+      at: ha(50),
+      kind: "backupAuto",
+      gameId: IDS.acao,
+      title: "Ação & Reação: Edição Especial do Colecionador com Todos os Extras Inclusos",
+      detail: "2 arquivos · 128 KB",
+    },
+    { at: ha(2 * H), kind: "backupManual", gameId: IDS.academia, title: "Academia Arcana", detail: "2 arquivos · 14,0 MB" },
+    {
+      at: ha(3 * H),
       kind: "error",
       gameId: IDS.estrela,
       title: "Estrela Saltitante 64",
       detail: "O arquivo ESTRELA SALTITANTE.eep estava em uso. Nova tentativa em 5 min.",
     },
-    { at: ha(26 * 60), kind: "restore", gameId: IDS.baloes, title: "Balões em Defesa 6", detail: "1 arquivo restaurado · o save anterior ficou no histórico" },
-    { at: ha(2 * 24 * 60), kind: "notice", gameId: null, title: null, detail: "O cofre voltou. O backup automático continua de onde parou." },
+    { at: ha(D + 2 * H), kind: "restore", gameId: IDS.baloes, title: "Balões em Defesa 6", detail: "1 arquivo restaurado · o save anterior ficou no histórico" },
+    { at: ha(D + 3 * H), kind: "backupAuto", gameId: IDS.baloes, title: "Balões em Defesa 6", detail: "1 arquivo · 220 KB" },
+    { at: ha(2 * D), kind: "notice", gameId: null, title: null, detail: "O cofre voltou. O backup automático continua de onde parou." },
+    { at: ha(3 * D), kind: "backupAuto", gameId: IDS.escudo, title: "O Escudo do Passado", detail: "1 arquivo · 8 KB" },
+    { at: ha(5 * D), kind: "backupManual", gameId: IDS.cavaleiro, title: "Cavaleiro das Cavernas", detail: "2 arquivos · 500 KB" },
+    { at: ha(8 * D), kind: "notice", gameId: IDS.vale, title: "Vale das Sementes", detail: "Backup apagado" },
   ];
 }
 

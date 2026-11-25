@@ -15,8 +15,24 @@ export const T = {
   menu: {
     rotulo: "Menu",
     biblioteca: "Biblioteca",
+    atividade: "Atividade",
     configuracoes: "Configurações",
     fontes: "Fontes",
+  },
+  atividade: {
+    titulo: "Atividade",
+    carregando: "Carregando…",
+    filtros: "Filtros",
+    filtro: { todos: "Todos", backups: "Backups", restauracoes: "Restaurações", erros: "Erros" },
+    tipos: {
+      backupAuto: "Backup automático",
+      backupManual: "Backup manual",
+      restore: "Restauração",
+      error: "Erro",
+      notice: "Aviso",
+    },
+    vazio: "Nada por aqui ainda. Backups, restaurações e erros aparecem aqui.",
+    vazioFiltro: "Nada neste filtro por enquanto.",
   },
   fontes: {
     steam: "Steam",
@@ -349,6 +365,8 @@ export const T = {
     agora: "agora",
     hoje: "hoje",
     ontem: "ontem",
+    hojeTitulo: "Hoje",
+    ontemTitulo: "Ontem",
     minutos: (n: number) => `há ${n} min`,
     horas: (n: number) => `há ${n} h`,
     dias: (n: number) => `há ${n} d`,

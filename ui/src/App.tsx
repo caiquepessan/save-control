@@ -6,6 +6,7 @@ import { GameDrawer } from "./components/drawer/GameDrawer";
 import { Dialogos } from "./components/flows/Dialogos";
 import { RestoreDialog } from "./components/flows/RestoreDialog";
 import { SelectFilesDialog } from "./components/flows/SelectFilesDialog";
+import { Activity } from "./screens/Activity";
 import { Failed } from "./screens/Failed";
 import { FirstRun } from "./screens/FirstRun";
 import { Library } from "./screens/Library";
@@ -16,7 +17,11 @@ import { T } from "./texto";
 
 function Principal() {
   const tela = useApp((s) => s.tela);
-  return <main className="principal">{tela === "biblioteca" ? <Library /> : <Settings />}</main>;
+  return (
+    <main className="principal">
+      {tela === "biblioteca" ? <Library /> : tela === "atividade" ? <Activity /> : <Settings />}
+    </main>
+  );
 }
 
 function Pronto() {

@@ -1,4 +1,4 @@
-import { LayoutGrid, SlidersHorizontal } from "lucide-react";
+import { History, LayoutGrid, SlidersHorizontal } from "lucide-react";
 import { useMemo } from "react";
 import type { GameView } from "../api/gerado/GameView";
 import { COR_FONTE, FONTES, contagens } from "../lib/library";
@@ -61,13 +61,14 @@ function Fontes() {
   );
 }
 
-/** Menu lateral: só o que já funciona (Atividade, Cofre e Detetive chegam nos próximos planos). */
+/** Menu lateral: só o que já funciona (Cofre e Detetive chegam nos próximos planos). */
 export function Sidebar() {
   const total = useApp((s) => s.biblioteca?.games.length ?? 0);
   return (
     <aside className="lateral">
       <nav aria-label={T.menu.rotulo} className="lateral-nav">
         <ItemMenu tela="biblioteca" rotulo={T.menu.biblioteca} icone={<LayoutGrid className="ic" aria-hidden="true" />} contagem={total} />
+        <ItemMenu tela="atividade" rotulo={T.menu.atividade} icone={<History className="ic" aria-hidden="true" />} />
         <ItemMenu tela="configuracoes" rotulo={T.menu.configuracoes} icone={<SlidersHorizontal className="ic" aria-hidden="true" />} />
       </nav>
       <Fontes />

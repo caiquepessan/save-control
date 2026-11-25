@@ -13,7 +13,7 @@ import type { SnapshotView } from "../api/gerado/SnapshotView";
 import { FILTRO_INICIAL, type Filtro } from "../lib/library";
 import { T } from "../texto";
 
-export type Tela = "biblioteca" | "configuracoes";
+export type Tela = "biblioteca" | "atividade" | "configuracoes";
 export type Aba = "historico" | "arquivos" | "ajustes";
 
 export interface Toast {

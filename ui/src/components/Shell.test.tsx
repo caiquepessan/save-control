@@ -25,7 +25,7 @@ describe("estrutura da janela", () => {
     renderApp(createDemoBackend({ atraso: 0 }));
     const menu = await screen.findByRole("navigation", { name: "Menu" });
     const itens = within(menu).getAllByRole("button").map((b) => b.getAttribute("aria-label"));
-    expect(itens).toEqual(["Biblioteca", "Configurações"]);
+    expect(itens).toEqual(["Biblioteca", "Atividade", "Configurações"]);
   });
 
   it("os avisos do app aparecem ao abrir e ficam até fechar", async () => {

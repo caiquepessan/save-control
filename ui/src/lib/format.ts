@@ -33,6 +33,14 @@ export function tempoRelativo(iso: string, agora: Date = new Date()): string {
   return diaEMes(d, agora);
 }
 
+/** Cabeçalho de um dia: "Hoje", "Ontem", "24 nov", "24 nov 2025". */
+export function dia(iso: string, agora: Date = new Date()): string {
+  const d = new Date(iso);
+  if (mesmoDia(d, agora)) return T.tempo.hojeTitulo;
+  if (foiOntem(d, agora)) return T.tempo.ontemTitulo;
+  return diaEMes(d, agora);
+}
+
 /** "09:05" (hora local). */
 export function hora(iso: string): string {
   const d = new Date(iso);
