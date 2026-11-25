@@ -264,3 +264,49 @@ fn has_manifest_so_depois_de_baixar() {
     e.update_manifest(&UmaVez::com(BASE_COM_CONFIG)).unwrap();
     assert!(e.has_manifest());
 }
+
+#[test]
+fn changed_games_ve_save_alterado() {
+    let t = tempfile::tempdir().unwrap();
+    let (s, mut e) = engine(t.path(), "a");
+    let dir = s.app_data.join("JogoA");
+    write(&dir.join("slot.sav"), b"1");
+    let g = e.add_custom_game("Jogo A", &[dir.clone()], &[], None).unwrap();
+    e.scan().unwrap();
+    assert!(e.changed_games().is_empty(), "nada mudou e mesmo assim apareceu");
+    write(&dir.join("slot.sav"), b"progresso novo, maior");
+    assert_eq!(e.changed_games(), [g.id.clone()]);
+    write(&dir.join("slot2.sav"), b"x");
+    assert_eq!(e.changed_games(), [g.id]);
+}
+
+#[test]
+fn games_for_path_acha_o_jogo_pela_raiz() {
+    let t = tempfile::tempdir().unwrap();
+    let (s, mut e) = engine(t.path(), "a");
+    let dir = s.app_data.join("JogoA");
+    write(&dir.join("slot.sav"), b"1");
+    let g = e.add_custom_game("Jogo A", &[dir.clone()], &[], None).unwrap();
+    e.scan().unwrap();
+    assert_eq!(e.games_for_path(&dir.join("slot.sav")), [g.id.clone()]);
+    let maiusculo = std::path::PathBuf::from(dir.join("SLOT.SAV").to_string_lossy().to_uppercase());
+    assert_eq!(e.games_for_path(&maiusculo), [g.id]);
+    assert!(e.games_for_path(&s.app_data.join("OutroJogo").join("x.sav")).is_empty());
+    assert!(e.games_for_path(&s.app_data.join("JogoAB").join("x.sav")).is_empty(), "pasta com nome parecido não é do jogo");
+}
+
+#[test]
+fn sabe_quando_da_para_ver_o_jogo_aberto() {
+    let t = tempfile::tempdir().unwrap();
+    let (s, mut e) = engine(t.path(), "a");
+    let com = s.app_data.join("ComProcesso");
+    let sem = s.app_data.join("SemProcesso");
+    write(&com.join("slot.sav"), b"1");
+    write(&sem.join("slot.sav"), b"1");
+    let a = e.add_custom_game("Com processo", &[com], &["Jogo.exe".to_string()], None).unwrap();
+    let b = e.add_custom_game("Sem processo", &[sem], &[], None).unwrap();
+    e.scan().unwrap();
+    let achar = |id: &str| e.games().iter().find(|g| g.id == id).unwrap().clone();
+    assert!(savecontrol_core::process::can_tell_running(&achar(&a.id)));
+    assert!(!savecontrol_core::process::can_tell_running(&achar(&b.id)));
+}

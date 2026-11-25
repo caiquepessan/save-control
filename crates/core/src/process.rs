@@ -46,6 +46,12 @@ fn is_under(path: &Path, dir: &Path) -> bool {
     !d.is_empty() && (p == d || p.starts_with(&format!("{d}/")))
 }
 
+/// Dá para saber se o jogo está aberto: ele tem nome de processo (catálogo ou
+/// à mão), pasta de instalação ou pasta do jogo conhecida.
+pub fn can_tell_running(game: &Game) -> bool {
+    !game.process_names.is_empty() || !game.install_dirs.is_empty() || game.game_dir.is_some()
+}
+
 /// Aberto = algum processo com o nome do executável do jogo, ou rodando de
 /// dentro da pasta de instalação dele.
 pub fn is_game_running(game: &Game, probe: &dyn ProcessProbe) -> bool {

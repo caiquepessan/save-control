@@ -4,7 +4,7 @@
 use std::collections::{BTreeMap, HashSet};
 use std::path::{Path, PathBuf};
 
-use chrono::{Local, Utc};
+use chrono::{DateTime, Local, Utc};
 
 use crate::backup::{BackupCtx, BackupOutcome, backup_game};
 use crate::catalog::{Catalog, find_catalog_games};
@@ -345,6 +345,48 @@ impl Engine {
     /// Metadados de um backup do jogo (lista de arquivos, raízes…).
     pub fn snapshot_meta(&self, game_id: &str, file_name: &str) -> Result<SnapshotMeta> {
         read_meta(&self.find_entry(game_id, file_name)?.zip_path(&self.vault))
+    }
+
+    /// Jogos cujos arquivos de save mudaram desde o último escaneamento. Só
+    /// lista as pastas (tamanho e data), sem calcular hashes: é a varredura leve
+    /// que cobre eventos de arquivo perdidos.
+    pub fn changed_games(&self) -> Vec<String> {
+        let catalog = find_catalog_games(&Catalog::builtin(), &self.sys, &self.local.user_roots);
+        let input = ScanInput {
+            sys: &self.sys,
+            manifest: self.manifest.as_ref(),
+            installs: &self.installs,
+            catalog: &catalog,
+            local: &self.local,
+            include_config: self.cfg.include_config,
+        };
+        let key = |g: &Game| {
+            let mut v: Vec<(usize, String, u64, DateTime<Utc>)> =
+                g.files.iter().map(|f| (f.root, f.rel_path.to_lowercase(), f.size, f.modified)).collect();
+            v.sort();
+            v
+        };
+        self.games
+            .iter()
+            .filter(|g| !g.vault_only)
+            .filter(|g| scan_game(&input, &g.id).as_ref().map(key).unwrap_or_default() != key(g))
+            .map(|g| g.id.clone())
+            .collect()
+    }
+
+    /// Jogos com alguma pasta de save que contém `path` (sem diferença de maiúsculas).
+    pub fn games_for_path(&self, path: &Path) -> Vec<String> {
+        let p = slash(path).to_lowercase();
+        self.games
+            .iter()
+            .filter(|g| {
+                g.save_roots.iter().any(|r| {
+                    let d = slash(&r.path).to_lowercase();
+                    !d.is_empty() && (p == d || p.starts_with(&format!("{d}/")))
+                })
+            })
+            .map(|g| g.id.clone())
+            .collect()
     }
 
     /// Jogos do último escaneamento.

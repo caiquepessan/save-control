@@ -1,5 +1,6 @@
 //! Núcleo do Save Control: encontrar saves, guardar no cofre e restaurar.
 
+pub mod auto;
 pub mod backup;
 pub mod catalog;
 pub mod custom;
