@@ -210,6 +210,9 @@ pub fn game_view(
         needs_game_dir: uses_game_dir && game_dir.is_none(),
         game_dir: game_dir.as_deref().map(path_str),
         is_custom,
+        auto_backup: settings.auto_backup != Some(false),
+        retention: settings.retention.as_ref().map(RetentionView::from),
+        include_config: settings.include_config,
         remembered_targets: settings
             .target_choices
             .iter()

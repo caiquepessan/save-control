@@ -2,6 +2,7 @@
 import type { CoverView } from "./CoverView";
 import type { GameKind } from "./GameKind";
 import type { RememberedTarget } from "./RememberedTarget";
+import type { RetentionView } from "./RetentionView";
 import type { RootView } from "./RootView";
 import type { SourceKey } from "./SourceKey";
 import type { StatusView } from "./StatusView";
@@ -11,4 +12,16 @@ export type GameView = { id: string,
 /**
  * Nome mostrado (o ajuste deste PC, se houver).
  */
-title: string, originalTitle: string, kind: GameKind, sourceKey: SourceKey, sourceLabel: string, status: StatusView, vaultOnly: boolean, lastSaved: string | null, lastBackup: string | null, backupCount: number, totalSize: number, fileCount: number, roots: Array<RootView>, warnings: Array<WarningView>, cover: CoverView, processNames: Array<string>, gameDir: string | null, needsGameDir: boolean, isCustom: boolean, rememberedTargets: Array<RememberedTarget>, };
+title: string, originalTitle: string, kind: GameKind, sourceKey: SourceKey, sourceLabel: string, status: StatusView, vaultOnly: boolean, lastSaved: string | null, lastBackup: string | null, backupCount: number, totalSize: number, fileCount: number, roots: Array<RootView>, warnings: Array<WarningView>, cover: CoverView, processNames: Array<string>, gameDir: string | null, needsGameDir: boolean, isCustom: boolean, rememberedTargets: Array<RememberedTarget>, 
+/**
+ * Automático ligado neste jogo (a chave da aba Ajustes).
+ */
+autoBackup: boolean, 
+/**
+ * Retenção só deste jogo (`null` = a geral).
+ */
+retention: RetentionView | null, 
+/**
+ * "Incluir configurações" só deste jogo (`null` = o geral).
+ */
+includeConfig: boolean | null, };

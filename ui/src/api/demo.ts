@@ -77,6 +77,9 @@ function base(id: string, title: string, extra: Partial<GameView>): GameView {
     needsGameDir: false,
     isCustom: false,
     rememberedTargets: [],
+    autoBackup: true,
+    retention: null,
+    includeConfig: null,
     ...extra,
   };
 }
@@ -474,6 +477,12 @@ export function createDemoBackend(opcoes: OpcoesDemo = {}): DemoBackend {
         includeConfig: config.includeConfig,
         steamCovers: config.steamCovers,
         manifestLoaded: config.manifestLoaded,
+        autoBackup: true,
+        retention: { autoRecent: 10, autoDailyDays: 7, autoWeeklyWeeks: 4 },
+        autoTimes: { quietSecs: 60, afterCloseSecs: 10, whileRunningMins: 15 },
+        closeToTray: true,
+        notifications: false,
+        startWithWindows: false,
         ignored: ignorados.map((g) => ({ id: g.id, title: g.title })),
         version: "0.1.0",
       };

@@ -5,9 +5,11 @@ use std::collections::BTreeMap;
 use std::path::{Path, PathBuf};
 use std::sync::Arc;
 use std::sync::atomic::{AtomicUsize, Ordering};
+use std::time::{Duration, Instant};
 
 use chrono::Utc;
 
+use savecontrol_core::auto::{AutoRules, Running};
 use savecontrol_core::backup::BackupOutcome;
 use savecontrol_core::catalog::Catalog;
 use savecontrol_core::engine::{Engine, EngineConfig};
@@ -15,23 +17,25 @@ use savecontrol_core::env::SystemPaths;
 use savecontrol_core::fsutil::write_atomic;
 use savecontrol_core::manifest::store::{Fetcher, UpdateOutcome};
 use savecontrol_core::model::Game;
-use savecontrol_core::process::{ProcessProbe, RunningProcess, is_game_running};
+use savecontrol_core::process::{ProcessProbe, RunningProcess, can_tell_running, is_game_running};
 use savecontrol_core::registry::RegistryReader;
 use savecontrol_core::restore::RestoreOptions;
 use savecontrol_core::status::GameStatus;
 use savecontrol_core::vault::Vault;
 use savecontrol_core::vault::format::SnapshotKind;
 use savecontrol_core::vault::index::SnapshotEntry;
+use savecontrol_core::vault::retention::RetentionPolicy;
 
-use crate::config::{AppConfig, WindowState, load_config, save_config};
-use crate::covers::CoverStore;
+use crate::activity::{ActivityEntry, ActivityKind, ActivityLog};
+use crate::config::{AppConfig, AutoTimes, WindowState, load_config, save_config};
+use crate::covers::{CoverChoice, CoverStore};
 use crate::dto::*;
 use crate::paths::{AppPaths, VAULT_DIR_NAME};
 use crate::texts;
 use crate::view::{ViewCtx, date_str, game_view, path_str, snapshot_view, vault_view};
 
-/// Liga enquanto há escaneamento, backup ou restauração rodando. A janela não
-/// fecha enquanto estiver ligado. Conta guardas aninhadas.
+/// Liga enquanto há backup ou restauração rodando (só eles mexem em save). O
+/// app não sai enquanto estiver ligado. Conta guardas aninhadas.
 #[derive(Clone, Default)]
 pub struct BusyFlag(Arc<AtomicUsize>);
 
@@ -43,6 +47,19 @@ impl BusyFlag {
     pub fn guard(&self) -> BusyGuard {
         self.0.fetch_add(1, Ordering::SeqCst);
         BusyGuard(self.0.clone())
+    }
+
+    /// Espera o backup ou a restauração em andamento terminar ("Sair"). Devolve
+    /// falso se ainda estiver ocupado depois do tempo limite.
+    pub fn wait_idle(&self, timeout: Duration) -> bool {
+        let limite = Instant::now() + timeout;
+        while self.is_busy() {
+            if Instant::now() >= limite {
+                return false;
+            }
+            std::thread::sleep(Duration::from_millis(20));
+        }
+        true
     }
 }
 
@@ -135,6 +152,9 @@ pub struct AppService {
     scanned: bool,
     catalog: Catalog,
     covers: CoverStore,
+    /// O config.json existe mas não deu para ler: nada é gravado por cima dele.
+    read_only: bool,
+    activity: ActivityLog,
 }
 
 impl AppService {
@@ -147,6 +167,7 @@ impl AppService {
         }
         warnings.extend(loaded.warning);
         let covers = CoverStore { dir: paths.covers_dir() };
+        let activity = ActivityLog::new(paths.activity_file());
         AppService {
             paths,
             sys,
@@ -160,6 +181,8 @@ impl AppService {
             scanned: false,
             catalog: Catalog::builtin(),
             covers,
+            read_only: loaded.read_only,
+            activity,
         }
     }
 
@@ -207,6 +230,9 @@ impl AppService {
     }
 
     fn save_config(&self) -> Res<()> {
+        if self.read_only {
+            return Ok(());
+        }
         save_config(&self.paths.config_file(), &self.config).map_err(ErrorView::from)
     }
 
@@ -236,7 +262,8 @@ impl AppService {
             include_config: self.config.include_config,
         };
         match Engine::open(cfg, self.sys.clone(), (self.make_reg)()) {
-            Ok(e) => {
+            Ok(mut e) => {
+                e.set_retention(self.config.retention.clone());
                 self.engine = Some(e);
                 self.open_error = None;
                 AppPhase::Pronto
@@ -338,7 +365,6 @@ impl AppService {
         if !self.vault_available() {
             return self.library();
         }
-        let _busy = self.busy.guard();
         let found = self.engine()?.scan()?;
         self.statuses = found.into_iter().map(|(g, s)| (g.id, s)).collect();
         self.scanned = true;
@@ -360,15 +386,82 @@ impl AppService {
         }
     }
 
-    fn backup_inner(&mut self, id: &str, label: Option<&str>) -> Res<BackupResultView> {
-        let outcome = self.engine()?.backup(id, SnapshotKind::Manual, label)?;
+    /// Faz o backup, atualiza o status e registra na Atividade (backup feito ou erro).
+    fn backup_kind(
+        &mut self,
+        id: &str,
+        kind: SnapshotKind,
+        label: Option<&str>,
+    ) -> Res<(BackupOutcomeView, Option<SnapshotEntry>)> {
+        let outcome = match self.engine()?.backup(id, kind, label) {
+            Ok(o) => o,
+            Err(e) => {
+                let e: ErrorView = e.into();
+                self.record_error(id, &e);
+                return Err(e);
+            }
+        };
         let (outcome, entry) = match outcome {
             BackupOutcome::Created(e) => (BackupOutcomeView::Feito, Some(e)),
             BackupOutcome::Unchanged(e) => (BackupOutcomeView::SemMudanca, Some(e)),
             BackupOutcome::NothingToBackup => (BackupOutcomeView::SemArquivos, None),
         };
         self.refresh_status(id);
+        if let (BackupOutcomeView::Feito, Some(e)) = (outcome, &entry) {
+            let activity = if kind == SnapshotKind::Auto { ActivityKind::BackupAuto } else { ActivityKind::BackupManual };
+            let arquivos = texts::arquivos(e.file_count, e.total_size);
+            let detail = match &e.label {
+                Some(nome) => format!("{nome} · {arquivos}"),
+                None => arquivos,
+            };
+            self.record(activity, Some(id), detail);
+        }
+        Ok((outcome, entry))
+    }
+
+    fn backup_inner(&mut self, id: &str, label: Option<&str>) -> Res<BackupResultView> {
+        let (outcome, entry) = self.backup_kind(id, SnapshotKind::Manual, label)?;
         Ok(BackupResultView { outcome, snapshot: entry.map(|e| self.snapshot(&e)) })
+    }
+
+    /// Uma linha na Atividade (falhar ao gravar nunca atrapalha a ação).
+    fn record(&self, kind: ActivityKind, game_id: Option<&str>, detail: String) {
+        let title = game_id.map(|id| self.title_for(id));
+        let entry = ActivityEntry { at: Utc::now(), kind, game_id: game_id.map(str::to_string), title, detail };
+        let _ = self.activity.append(&entry);
+    }
+
+    /// Erros de verdade vão para a Atividade; "feche o jogo" e "escolha o
+    /// destino" são só passos do fluxo.
+    fn record_error(&self, id: &str, e: &ErrorView) {
+        if !matches!(e.kind, ErrorKind::JogoAberto | ErrorKind::PrecisaDestino) {
+            self.record(ActivityKind::Error, Some(id), e.message.clone());
+        }
+    }
+
+    /// Backup automático (o trabalhador chama quando vence o prazo do §9).
+    pub fn auto_backup(&mut self, id: &str) -> Res<AutoBackupView> {
+        let _busy = self.busy.guard();
+        let (outcome, entry) = self.backup_kind(id, SnapshotKind::Auto, None)?;
+        let (file_count, total_size) = entry.as_ref().map_or((0, 0), |e| (e.file_count, e.total_size));
+        Ok(AutoBackupView {
+            id: id.to_string(),
+            title: self.title_for(id),
+            outcome,
+            file_count,
+            total_size,
+            cover: self.cover_file(id),
+        })
+    }
+
+    /// Arquivo da capa (própria ou da Steam), para a notificação.
+    fn cover_file(&self, id: &str) -> Option<String> {
+        let engine = self.engine.as_ref()?;
+        let game = engine.games().iter().find(|g| g.id == id)?;
+        match self.covers.choice(game.steam_app_id, &engine.game_settings(id)) {
+            CoverChoice::Custom(p) | CoverChoice::Steam(p) => Some(path_str(&p)),
+            CoverChoice::Generated => None,
+        }
     }
 
     /// Backup manual, com nome opcional.
@@ -484,9 +577,14 @@ impl AppService {
         };
         let report = match self.engine()?.restore(id, file, &opts, probe) {
             Ok(r) => r,
-            Err(e) => return Err(self.with_alias(id, file, &req.targets, e.into())),
+            Err(e) => {
+                let e = self.with_alias(id, file, &req.targets, e.into());
+                self.record_error(id, &e);
+                return Err(e);
+            }
         };
         self.refresh_status(id);
+        self.record(ActivityKind::Restore, Some(id), texts::restaurados(report.written, report.safety.is_some()));
         Ok(RestoreResultView {
             written: report.written,
             removed: report.removed,
@@ -507,7 +605,6 @@ impl AppService {
         let game_dir = req.game_dir.as_deref().filter(|d| !d.trim().is_empty()).map(PathBuf::from);
         let processes: Vec<String> =
             req.processes.iter().map(|p| p.trim().to_string()).filter(|p| !p.is_empty()).collect();
-        let _busy = self.busy.guard();
         let g = self.engine()?.add_custom_game(&name, &dirs, &processes, game_dir.as_deref())?;
         if let Some(src) = req.cover_file.as_deref().filter(|c| !c.trim().is_empty()) {
             let dest = cover_name(self.covers.import_custom(Path::new(src)).map_err(erro)?);
@@ -596,6 +693,13 @@ impl AppService {
             manifest_loaded,
             ignored,
             version: env!("CARGO_PKG_VERSION").to_string(),
+            auto_backup: self.config.auto_backup,
+            retention: RetentionView::from(&self.config.retention),
+            auto_times: AutoTimesView::from(self.config.auto_times),
+            close_to_tray: self.config.close_to_tray,
+            notifications: self.config.notifications,
+            // Quem sabe é o registro do Windows: o src-tauri preenche.
+            start_with_windows: false,
         })
     }
 
@@ -616,6 +720,161 @@ impl AppService {
     pub fn set_steam_covers(&mut self, on: bool) -> Res<()> {
         self.config.steam_covers = on;
         self.save_config()
+    }
+
+    pub fn auto_backup_enabled(&self) -> bool {
+        self.config.auto_backup
+    }
+
+    /// Chave geral do backup automático (cartão do cofre).
+    pub fn set_auto_backup(&mut self, on: bool) -> Res<()> {
+        self.config.auto_backup = on;
+        self.save_config()
+    }
+
+    /// Automático deste jogo. Ligado não guarda nada: vale o padrão.
+    pub fn set_game_auto(&mut self, id: &str, on: bool) -> Res<()> {
+        self.engine()?.update_game_settings(id, |s| s.auto_backup = if on { None } else { Some(false) })?;
+        Ok(())
+    }
+
+    /// O automático pode fazer backup deste jogo: chave geral e do jogo ligadas,
+    /// e o jogo não está ignorado.
+    pub fn can_back_up(&self, id: &str) -> bool {
+        self.config.auto_backup
+            && self.engine.as_ref().is_some_and(|e| {
+                let s = e.game_settings(id);
+                s.auto_backup != Some(false) && !s.ignored
+            })
+    }
+
+    /// A interface mexe nos 3 números dos automáticos; "antes de restaurar" fica como está.
+    fn policy(&self, r: &RetentionView) -> RetentionPolicy {
+        RetentionPolicy {
+            auto_recent: r.auto_recent,
+            auto_daily_days: r.auto_daily_days,
+            auto_weekly_weeks: r.auto_weekly_weeks,
+            pre_restore_keep: self.config.retention.pre_restore_keep,
+        }
+    }
+
+    pub fn set_retention(&mut self, r: RetentionView) -> Res<()> {
+        let p = self.policy(&r);
+        self.config.retention = p.clone();
+        self.save_config()?;
+        if let Some(e) = self.engine.as_mut() {
+            e.set_retention(p);
+        }
+        Ok(())
+    }
+
+    pub fn set_game_retention(&mut self, id: &str, r: Option<RetentionView>) -> Res<()> {
+        let p = r.map(|r| self.policy(&r));
+        self.engine()?.update_game_settings(id, |s| s.retention = p)?;
+        Ok(())
+    }
+
+    /// Tempos do automático (Configurações), dentro das faixas da Decisão 15 do plano.
+    pub fn set_auto_times(&mut self, t: AutoTimesView) -> Res<()> {
+        let fora = |v: u32, min: u32, max: u32| v < min || v > max;
+        if fora(t.quiet_secs, 5, 600) || fora(t.after_close_secs, 5, 600) {
+            return Err(erro(texts::TEMPO_SEGUNDOS));
+        }
+        if fora(t.while_running_mins, 5, 120) {
+            return Err(erro(texts::TEMPO_MINUTOS));
+        }
+        self.config.auto_times =
+            AutoTimes { quiet_secs: t.quiet_secs, after_close_secs: t.after_close_secs, while_running_mins: t.while_running_mins };
+        self.save_config()
+    }
+
+    pub fn auto_rules(&self) -> AutoRules {
+        self.config.auto_times.rules()
+    }
+
+    /// Um save mudou (vigia ou varredura): "Protegido" vira "Save novo" na hora,
+    /// sem calcular hashes. O backup confirma depois.
+    pub fn mark_changed(&mut self, id: &str) {
+        if self.statuses.get(id) == Some(&GameStatus::Protected) {
+            self.statuses.insert(id.to_string(), GameStatus::NewSave);
+        }
+    }
+
+    pub fn set_game_include_config(&mut self, id: &str, on: Option<bool>) -> Res<()> {
+        self.engine()?.update_game_settings(id, |s| s.include_config = on)?;
+        self.refresh_status(id);
+        Ok(())
+    }
+
+    pub fn pin_backup(&mut self, id: &str, file: &str, pinned: bool) -> Res<SnapshotView> {
+        let e = self.engine()?.pin_snapshot(id, file, pinned)?;
+        Ok(self.snapshot(&e))
+    }
+
+    /// Apaga um backup (a interface já pediu confirmação).
+    pub fn delete_backup(&mut self, id: &str, file: &str) -> Res<()> {
+        self.engine()?.delete_snapshot(id, file)?;
+        self.refresh_status(id);
+        self.record(ActivityKind::Notice, Some(id), texts::BACKUP_APAGADO.to_string());
+        Ok(())
+    }
+
+    /// Os eventos mais novos da Atividade.
+    pub fn activity(&self, limit: usize) -> Vec<ActivityEntry> {
+        self.activity.recent(limit)
+    }
+
+    /// Escaneia e já diz quais capas da Steam faltam, com o serviço travado uma vez só.
+    pub fn scan_with_covers(&mut self) -> Res<(LibraryView, Vec<(String, u32)>)> {
+        let lib = self.scan()?;
+        Ok((lib, self.steam_covers_to_fetch()))
+    }
+
+    pub fn close_to_tray(&self) -> bool {
+        self.config.close_to_tray
+    }
+
+    pub fn set_close_to_tray(&mut self, on: bool) -> Res<()> {
+        self.config.close_to_tray = on;
+        self.save_config()
+    }
+
+    pub fn notifications_enabled(&self) -> bool {
+        self.config.notifications
+    }
+
+    pub fn set_notifications(&mut self, on: bool) -> Res<()> {
+        self.config.notifications = on;
+        self.save_config()
+    }
+
+    pub fn game_ids_for_path(&self, path: &Path) -> Vec<String> {
+        self.engine.as_ref().map(|e| e.games_for_path(path)).unwrap_or_default()
+    }
+
+    pub fn changed_game_ids(&self) -> Vec<String> {
+        self.engine.as_ref().map(|e| e.changed_games()).unwrap_or_default()
+    }
+
+    /// Para cada jogo encontrado: aberto, fechado ou "não dá para saber".
+    pub fn running_states(&self, probe: &dyn ProcessProbe) -> Vec<(String, Running)> {
+        let Some(engine) = &self.engine else { return Vec::new() };
+        let snapshot = ProcessSnapshot(probe.running());
+        engine
+            .games()
+            .iter()
+            .filter(|g| !g.vault_only)
+            .map(|g| {
+                let r = if !can_tell_running(g) {
+                    Running::Unknown
+                } else if is_game_running(g, &snapshot) {
+                    Running::Yes
+                } else {
+                    Running::No
+                };
+                (g.id.clone(), r)
+            })
+            .collect()
     }
 
     /// Passa a usar o cofre de `dir`. Sem cofre lá, só cria quando `create`.

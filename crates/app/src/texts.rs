@@ -7,5 +7,33 @@ pub const DATA_FALLBACK: &str =
 
 pub const CONFIG_RESET: &str = "As configurações estavam danificadas e voltaram ao padrão.";
 
+pub const BACKUP_APAGADO: &str = "Backup apagado";
+
+pub const TEMPO_SEGUNDOS: &str = "Use um valor entre 5 e 600 segundos.";
+
+pub const TEMPO_MINUTOS: &str = "Use um valor entre 5 e 120 minutos.";
+
+/// Tamanho como a interface mostra: KB abaixo de 512 KB, MB abaixo de 512 MB, senão GB.
+pub fn tamanho(bytes: u64) -> String {
+    const KB: f64 = 1024.0;
+    let b = bytes as f64;
+    if b < 512.0 * KB {
+        format!("{} KB", (b / KB).round() as u64)
+    } else if b < 512.0 * KB * KB {
+        format!("{:.1} MB", b / (KB * KB)).replace('.', ",")
+    } else {
+        format!("{:.1} GB", b / (KB * KB * KB)).replace('.', ",")
+    }
+}
+
+pub fn arquivos(n: usize, bytes: u64) -> String {
+    format!("{n} {} · {}", if n == 1 { "arquivo" } else { "arquivos" }, tamanho(bytes))
+}
+
+pub fn restaurados(n: usize, seguranca: bool) -> String {
+    let base = if n == 1 { "1 arquivo restaurado".to_string() } else { format!("{n} arquivos restaurados") };
+    if seguranca { format!("{base} · o save anterior ficou no histórico") } else { base }
+}
+
 pub const CONFIG_UNREADABLE: &str =
     "Não foi possível ler as configurações agora. O app abriu com os padrões e não vai gravar por cima delas.";

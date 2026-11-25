@@ -28,6 +28,9 @@ function jogo(id: string, extra: Partial<GameView> = {}): GameView {
     needsGameDir: false,
     isCustom: false,
     rememberedTargets: [],
+    autoBackup: true,
+    retention: null,
+    includeConfig: null,
     ...extra,
   };
 }

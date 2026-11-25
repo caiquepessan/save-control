@@ -7,6 +7,10 @@ use std::collections::BTreeMap;
 use serde::{Deserialize, Serialize};
 use ts_rs::TS;
 
+use savecontrol_core::vault::retention::RetentionPolicy;
+
+use crate::config::AutoTimes;
+
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize, TS)]
 #[serde(rename_all = "camelCase")]
 #[ts(export)]
@@ -101,6 +105,68 @@ pub struct GameView {
     pub needs_game_dir: bool,
     pub is_custom: bool,
     pub remembered_targets: Vec<RememberedTarget>,
+    /// Automático ligado neste jogo (a chave da aba Ajustes).
+    #[serde(default = "ligado")]
+    pub auto_backup: bool,
+    /// Retenção só deste jogo (`null` = a geral).
+    #[serde(default)]
+    pub retention: Option<RetentionView>,
+    /// "Incluir configurações" só deste jogo (`null` = o geral).
+    #[serde(default)]
+    pub include_config: Option<bool>,
+}
+
+fn ligado() -> bool {
+    true
+}
+
+/// Os 3 números da retenção dos automáticos (§8.2).
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize, TS)]
+#[serde(rename_all = "camelCase")]
+#[ts(export)]
+pub struct RetentionView {
+    #[ts(type = "number")]
+    pub auto_recent: usize,
+    pub auto_daily_days: u32,
+    pub auto_weekly_weeks: u32,
+}
+
+impl From<&RetentionPolicy> for RetentionView {
+    fn from(p: &RetentionPolicy) -> Self {
+        RetentionView { auto_recent: p.auto_recent, auto_daily_days: p.auto_daily_days, auto_weekly_weeks: p.auto_weekly_weeks }
+    }
+}
+
+/// Tempos do automático (§9), ajustáveis em Configurações.
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize, TS)]
+#[serde(rename_all = "camelCase")]
+#[ts(export)]
+pub struct AutoTimesView {
+    pub quiet_secs: u32,
+    pub after_close_secs: u32,
+    pub while_running_mins: u32,
+}
+
+impl From<AutoTimes> for AutoTimesView {
+    fn from(t: AutoTimes) -> Self {
+        AutoTimesView { quiet_secs: t.quiet_secs, after_close_secs: t.after_close_secs, while_running_mins: t.while_running_mins }
+    }
+}
+
+/// Resultado de um backup automático (para a notificação e a Atividade).
+#[derive(Clone, Debug, PartialEq, Serialize, TS)]
+#[serde(rename_all = "camelCase")]
+#[ts(export)]
+pub struct AutoBackupView {
+    pub id: String,
+    pub title: String,
+    pub outcome: BackupOutcomeView,
+    #[ts(type = "number")]
+    pub file_count: usize,
+    #[ts(type = "number")]
+    pub total_size: u64,
+    /// Arquivo da capa (própria ou da Steam), se houver.
+    pub cover: Option<String>,
 }
 
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize, TS)]
@@ -321,6 +387,12 @@ pub struct SettingsView {
     pub manifest_loaded: bool,
     pub ignored: Vec<IgnoredGame>,
     pub version: String,
+    pub auto_backup: bool,
+    pub retention: RetentionView,
+    pub auto_times: AutoTimesView,
+    pub close_to_tray: bool,
+    pub notifications: bool,
+    pub start_with_windows: bool,
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize, TS)]
