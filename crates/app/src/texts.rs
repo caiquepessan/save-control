@@ -6,3 +6,6 @@ pub const DATA_FALLBACK: &str =
     "A pasta do Save Control não permite gravar arquivos. Os dados ficam em %LOCALAPPDATA%\\SaveControl.";
 
 pub const CONFIG_RESET: &str = "As configurações estavam danificadas e voltaram ao padrão.";
+
+pub const CONFIG_UNREADABLE: &str =
+    "Não foi possível ler as configurações agora. O app abriu com os padrões e não vai gravar por cima delas.";

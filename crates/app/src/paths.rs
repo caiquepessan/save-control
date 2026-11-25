@@ -29,6 +29,14 @@ impl AppPaths {
         self.data_dir.join("webview")
     }
 
+    pub fn activity_file(&self) -> PathBuf {
+        self.data_dir.join("atividade.jsonl")
+    }
+
+    pub fn logs_dir(&self) -> PathBuf {
+        self.data_dir.join("logs")
+    }
+
     pub fn library_cache(&self) -> PathBuf {
         self.data_dir.join("indice").join("biblioteca.json")
     }
