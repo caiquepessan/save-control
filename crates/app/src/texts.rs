@@ -9,6 +9,11 @@ pub const CONFIG_RESET: &str = "As configurações estavam danificadas e voltara
 
 pub const BACKUP_APAGADO: &str = "Backup apagado";
 
+/// "Iniciar com o Windows" apontava para um `.exe` num HD removível.
+pub fn inicio_removivel(antigo: &str) -> String {
+    format!("O Save Control iniciava junto com o Windows a partir de {antigo}, num HD removível. Agora ele inicia desta cópia.")
+}
+
 pub const COFRE_VOLTOU: &str = "O cofre voltou. O backup automático continua de onde parou.";
 
 pub const TEMPO_SEGUNDOS: &str = "Use um valor entre 5 e 600 segundos.";

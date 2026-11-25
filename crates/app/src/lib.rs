@@ -9,6 +9,7 @@ pub mod dto;
 pub mod errors;
 pub mod logs;
 pub mod paths;
+pub mod registro;
 pub mod service;
 pub mod texts;
 pub mod view;

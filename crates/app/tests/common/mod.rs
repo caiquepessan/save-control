@@ -1,8 +1,11 @@
 #![allow(dead_code)]
 
+use std::collections::BTreeMap;
 use std::path::{Path, PathBuf};
+use std::sync::{Arc, Mutex};
 
 use savecontrol_app::paths::resolve_paths;
+use savecontrol_app::registro::Registro;
 use savecontrol_app::service::{AppService, BusyFlag};
 use savecontrol_core::env::SystemPaths;
 use savecontrol_core::registry::{FakeRegistry, Hive, RegistryReader};
@@ -62,4 +65,43 @@ pub fn pronto(w: &Mundo) -> AppService {
     let mut s = servico(w, BusyFlag::default());
     s.finish_first_run(&w.exe.join("cofre")).unwrap();
     s
+}
+
+/// Registro do Windows de mentira (HKCU), compartilhado entre o teste e o app.
+#[derive(Clone, Default)]
+pub struct RegistroFalso(Arc<Mutex<BTreeMap<(String, String), String>>>);
+
+impl RegistroFalso {
+    pub fn valor(&self, chave: &str, nome: &str) -> Option<String> {
+        self.0.lock().unwrap().get(&(chave.to_string(), nome.to_string())).cloned()
+    }
+
+    pub fn preencher(&self, chave: &str, nome: &str, valor: &str) {
+        self.0.lock().unwrap().insert((chave.to_string(), nome.to_string()), valor.to_string());
+    }
+
+    pub fn vazio(&self) -> bool {
+        self.0.lock().unwrap().is_empty()
+    }
+}
+
+impl Registro for RegistroFalso {
+    fn ler(&self, chave: &str, nome: &str) -> Option<String> {
+        self.valor(chave, nome)
+    }
+
+    fn gravar(&mut self, chave: &str, nome: &str, valor: &str) -> std::io::Result<()> {
+        self.preencher(chave, nome, valor);
+        Ok(())
+    }
+
+    fn apagar_valor(&mut self, chave: &str, nome: &str) -> std::io::Result<()> {
+        self.0.lock().unwrap().remove(&(chave.to_string(), nome.to_string()));
+        Ok(())
+    }
+
+    fn apagar_chave(&mut self, chave: &str) -> std::io::Result<()> {
+        self.0.lock().unwrap().retain(|(c, _), _| c != chave);
+        Ok(())
+    }
 }
