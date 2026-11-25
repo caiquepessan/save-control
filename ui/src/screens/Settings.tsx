@@ -1,8 +1,23 @@
-import { Archive, Database, EyeOff, Folder, FolderPlus, HardDrive, Image as ImageIcon, Info, RefreshCw } from "lucide-react";
+import {
+  AppWindow,
+  Archive,
+  Bell,
+  Database,
+  Eraser,
+  EyeOff,
+  Folder,
+  FolderPlus,
+  HardDrive,
+  Image as ImageIcon,
+  Info,
+  RefreshCw,
+} from "lucide-react";
 import { useCallback, useEffect, useId, useRef, useState, type ReactNode } from "react";
 import { ErroApp } from "../api/backend";
+import type { AutoTimesView } from "../api/gerado/AutoTimesView";
+import type { RetentionView } from "../api/gerado/RetentionView";
 import type { SettingsView } from "../api/gerado/SettingsView";
-import { ConfirmarCofre } from "../components/flows/Confirmacao";
+import { Confirmacao, ConfirmarCofre } from "../components/flows/Confirmacao";
 import { useApp, type CofreEscolhido } from "../store/app";
 import { T } from "../texto";
 
@@ -28,9 +43,126 @@ function Chave({ rotulo, ligada, onMudar }: { rotulo: string; ligada: boolean; o
   );
 }
 
+/** Um número inteiro digitado, ou null. */
+function inteiro(s: string): number | null {
+  return /^\d+$/.test(s.trim()) ? Number(s) : null;
+}
+
+/** Campo numérico curto, dentro de uma frase. */
+function Numero({ rotulo, valor, onMudar }: { rotulo: string; valor: string; onMudar: (v: string) => void }) {
+  return <input type="number" className="numero" aria-label={rotulo} value={valor} min={0} onChange={(e) => onMudar(e.target.value)} />;
+}
+
+/** Salva com o app; o erro (fora da faixa) aparece embaixo, como nos formulários. */
+function useSalvar(onSalvo: () => void) {
+  const avisar = useApp((s) => s.avisar);
+  const [erro, setErro] = useState<string | null>(null);
+  async function salvar(comando: () => Promise<void>, ok: string) {
+    setErro(null);
+    try {
+      await comando();
+      avisar("ok", ok);
+      onSalvo();
+    } catch (e) {
+      setErro(ErroApp.de(e).message);
+    }
+  }
+  return { erro, setErro, salvar };
+}
+
+/** "Guardar os últimos [10] · 1 por dia por [7] dias · 1 por semana por [4] semanas". */
+function RetencaoGeral({ inicial, onSalvo }: { inicial: RetentionView; onSalvo: () => void }) {
+  const backend = useApp((s) => s.backend);
+  const { erro, setErro, salvar } = useSalvar(onSalvo);
+  const [v, setV] = useState({
+    autoRecent: String(inicial.autoRecent),
+    autoDailyDays: String(inicial.autoDailyDays),
+    autoWeeklyWeeks: String(inicial.autoWeeklyWeeks),
+  });
+  const [antes, dias, semanas, fim] = T.config.retencaoFrase;
+
+  function enviar() {
+    const r = { autoRecent: inteiro(v.autoRecent), autoDailyDays: inteiro(v.autoDailyDays), autoWeeklyWeeks: inteiro(v.autoWeeklyWeeks) };
+    if (r.autoRecent === null || r.autoDailyDays === null || r.autoWeeklyWeeks === null) return setErro(T.config.numeroInvalido);
+    const politica = r as RetentionView;
+    void salvar(() => backend.definirRetencao(politica), T.config.retencaoSalva);
+  }
+
+  return (
+    <div className="cfg-bloco">
+      <b className="cfg-sub">{T.config.retencao}</b>
+      <div className="cfg-frase">
+        <span>{antes}</span>
+        <Numero rotulo={T.config.campoUltimos} valor={v.autoRecent} onMudar={(x) => setV({ ...v, autoRecent: x })} />
+        <span>{dias}</span>
+        <Numero rotulo={T.config.campoDias} valor={v.autoDailyDays} onMudar={(x) => setV({ ...v, autoDailyDays: x })} />
+        <span>{semanas}</span>
+        <Numero rotulo={T.config.campoSemanas} valor={v.autoWeeklyWeeks} onMudar={(x) => setV({ ...v, autoWeeklyWeeks: x })} />
+        <span>{fim}</span>
+        <button type="button" className="btn btn-pequeno" aria-label={T.config.salvarRetencao} onClick={enviar}>
+          {T.config.salvar}
+        </button>
+      </div>
+      <p className="ajuda">{T.config.retencaoAjuda}</p>
+      {erro ? (
+        <p className="erro-form" role="alert">
+          {erro}
+        </p>
+      ) : null}
+    </div>
+  );
+}
+
+/** Os 3 tempos do automático (§9), com as faixas conferidas pelo app. */
+function Tempos({ inicial, onSalvo }: { inicial: AutoTimesView; onSalvo: () => void }) {
+  const backend = useApp((s) => s.backend);
+  const { erro, setErro, salvar } = useSalvar(onSalvo);
+  const [v, setV] = useState({
+    afterCloseSecs: String(inicial.afterCloseSecs),
+    whileRunningMins: String(inicial.whileRunningMins),
+    quietSecs: String(inicial.quietSecs),
+  });
+  const linhas: [keyof typeof v, readonly [string, string], string][] = [
+    ["afterCloseSecs", T.config.tempoFechar, T.config.campoFechar],
+    ["whileRunningMins", T.config.tempoAberto, T.config.campoAberto],
+    ["quietSecs", T.config.tempoQuieto, T.config.campoQuieto],
+  ];
+
+  function enviar() {
+    const t = { quietSecs: inteiro(v.quietSecs), afterCloseSecs: inteiro(v.afterCloseSecs), whileRunningMins: inteiro(v.whileRunningMins) };
+    if (t.quietSecs === null || t.afterCloseSecs === null || t.whileRunningMins === null) return setErro(T.config.numeroInvalido);
+    const tempos = t as AutoTimesView;
+    void salvar(() => backend.definirTemposDoAutomatico(tempos), T.config.temposSalvos);
+  }
+
+  return (
+    <div className="cfg-bloco">
+      <b className="cfg-sub">{T.config.tempos}</b>
+      {linhas.map(([k, [antes, depois], rotulo]) => (
+        <div key={k} className="cfg-frase">
+          <span>{antes}</span>
+          <Numero rotulo={rotulo} valor={v[k]} onMudar={(x) => setV({ ...v, [k]: x })} />
+          <span>{depois}</span>
+        </div>
+      ))}
+      <div className="cfg-linha">
+        <button type="button" className="btn btn-pequeno" aria-label={T.config.salvarTempos} onClick={enviar}>
+          {T.config.salvar}
+        </button>
+      </div>
+      {erro ? (
+        <p className="erro-form" role="alert">
+          {erro}
+        </p>
+      ) : null}
+    </div>
+  );
+}
+
 /**
  * Configurações (spec §12): cofre, pastas de jogos, base de jogos de PC, capas,
- * backup, jogos ignorados e créditos. O que muda o que o escaneamento acha
+ * backup, backup automático, janela e Windows, notificações, registros do
+ * Windows, jogos ignorados e créditos. O que muda o que o escaneamento acha
  * (pastas, configs, voltar a mostrar) escaneia de novo em seguida.
  */
 export function Settings() {
@@ -46,6 +178,7 @@ export function Settings() {
   const [atualizando, setAtualizando] = useState(false);
   const [resultadoBase, setResultadoBase] = useState<string | null>(null);
   const [escolha, setEscolha] = useState<CofreEscolhido | null>(null);
+  const [removerRegistros, setRemoverRegistros] = useState(false);
 
   const mostrar = useCallback((novo: SettingsView) => {
     atual.current = novo;
@@ -142,6 +275,18 @@ export function Settings() {
     await recarregar();
   }
 
+  async function confirmarRemocaoDosRegistros() {
+    setRemoverRegistros(false);
+    let ok = false;
+    await mudar({ startWithWindows: false, notifications: false }, async () => {
+      await backend.removerRegistrosDoWindows();
+      ok = true;
+    });
+    if (ok) avisar("ok", T.config.registrosRemovidos);
+  }
+
+  const salvo = () => void recarregar();
+
   return (
     <div className="config">
       <div className="hd">
@@ -221,6 +366,48 @@ export function Settings() {
               />
             </Secao>
 
+            <Secao titulo={T.config.automatico} icone={<RefreshCw className="ic" aria-hidden="true" />}>
+              <Chave
+                rotulo={T.config.fazerAutomatico}
+                ligada={cfg.autoBackup}
+                onMudar={(v) => void mudar({ autoBackup: v }, () => backend.definirAutomatico(v))}
+              />
+              <p className="ajuda">{T.config.automaticoAjuda}</p>
+              <RetencaoGeral key={JSON.stringify(cfg.retention)} inicial={cfg.retention} onSalvo={salvo} />
+              <Tempos key={JSON.stringify(cfg.autoTimes)} inicial={cfg.autoTimes} onSalvo={salvo} />
+            </Secao>
+
+            <Secao titulo={T.config.janela} icone={<AppWindow className="ic" aria-hidden="true" />}>
+              <Chave
+                rotulo={T.config.fecharParaBandeja}
+                ligada={cfg.closeToTray}
+                onMudar={(v) => void mudar({ closeToTray: v }, () => backend.definirFecharParaBandeja(v))}
+              />
+              <Chave
+                rotulo={T.config.iniciarComWindows}
+                ligada={cfg.startWithWindows}
+                onMudar={(v) => void mudar({ startWithWindows: v }, () => backend.definirIniciarComWindows(v))}
+              />
+            </Secao>
+
+            <Secao titulo={T.config.notificacoes} icone={<Bell className="ic" aria-hidden="true" />}>
+              <Chave
+                rotulo={T.config.mostrarNotificacoes}
+                ligada={cfg.notifications}
+                onMudar={(v) => void mudar({ notifications: v }, () => backend.definirNotificacoes(v))}
+              />
+              <p className="ajuda">{T.config.notificacoesAjuda}</p>
+            </Secao>
+
+            <Secao titulo={T.config.registros} icone={<Eraser className="ic" aria-hidden="true" />}>
+              <p className="ajuda">{T.config.registrosAjuda}</p>
+              <div className="cfg-linha">
+                <button type="button" className="btn btn-pequeno" onClick={() => setRemoverRegistros(true)}>
+                  {T.config.removerRegistros}
+                </button>
+              </div>
+            </Secao>
+
             <Secao titulo={T.config.ignorados} icone={<EyeOff className="ic" aria-hidden="true" />}>
               {cfg.ignored.length ? (
                 <ul className="cfg-lista">
@@ -253,6 +440,14 @@ export function Settings() {
       </div>
       {escolha ? (
         <ConfirmarCofre escolha={escolha} onConfirmar={() => void confirmarTroca(escolha)} onCancelar={() => setEscolha(null)} />
+      ) : null}
+      {removerRegistros ? (
+        <Confirmacao
+          titulo={T.config.removerRegistrosTitulo}
+          confirmar={T.config.removerRegistrosConfirmar}
+          onConfirmar={() => void confirmarRemocaoDosRegistros()}
+          onCancelar={() => setRemoverRegistros(false)}
+        />
       ) : null}
     </div>
   );

@@ -1,4 +1,4 @@
-import { Check, CircleAlert, FolderOpen, HardDrive, LoaderCircle, ShieldCheck } from "lucide-react";
+import { Check, CircleAlert, FolderOpen, HardDrive, LoaderCircle, RefreshCw, ShieldCheck } from "lucide-react";
 import { useEffect, useMemo, useRef, useState } from "react";
 import { ErroApp } from "../api/backend";
 import type { BackupManyView } from "../api/gerado/BackupManyView";
@@ -8,10 +8,10 @@ import { COR_FONTE, FONTES, contagens } from "../lib/library";
 import { useApp, type CofreEscolhido } from "../store/app";
 import { T } from "../texto";
 
-type Etapa = "boasVindas" | "cofre" | "procurando" | "resumo" | "backup";
+type Etapa = "boasVindas" | "cofre" | "procurando" | "resumo" | "backup" | "automatico";
 type Progresso = "esperando" | "rodando" | "ok" | "falhou";
 
-const ETAPAS: Etapa[] = ["boasVindas", "cofre", "procurando", "resumo", "backup"];
+const ETAPAS: Etapa[] = ["boasVindas", "cofre", "procurando", "resumo", "backup", "automatico"];
 const NENHUM: GameView[] = [];
 const SEM_RESULTADO: BackupManyView = { done: [], unchanged: [], failed: [] };
 
@@ -43,8 +43,8 @@ function Passo({ estado, texto }: { estado: Progresso; texto: string }) {
 
 /**
  * Primeiro uso (spec §12): boas-vindas, onde fica o cofre, escaneamento,
- * resumo e o primeiro backup de tudo. O app já fica pronto no meio do caminho;
- * a tela só some quando a pessoa abre a biblioteca.
+ * resumo, o primeiro backup de tudo e o backup automático (§20.6). O app já
+ * fica pronto no meio do caminho; a tela só some quando a pessoa abre a biblioteca.
  */
 export function FirstRun() {
   const backend = useApp((s) => s.backend);
@@ -54,6 +54,10 @@ export function FirstRun() {
   const concluirAssistente = useApp((s) => s.concluirAssistente);
   const escolherCofre = useApp((s) => s.escolherCofre);
   const escanear = useApp((s) => s.escanear);
+  const avisar = useApp((s) => s.avisar);
+  const [automatico, setAutomatico] = useState(true);
+  const [iniciarComWindows, setIniciarComWindows] = useState(false);
+  const [terminando, setTerminando] = useState(false);
 
   const [etapa, setEtapa] = useState<Etapa>("boasVindas");
   const [cofre, setCofre] = useState<CofreEscolhido>({ pasta: padrao, existe: false, versoes: 0 });
@@ -128,6 +132,24 @@ export function FirstRun() {
       setErro(ErroApp.de(e).message);
       setResultado(SEM_RESULTADO);
     }
+  }
+
+  /** Passo 6: grava as duas escolhas e abre a biblioteca (um erro vira aviso lá). */
+  async function terminar() {
+    setTerminando(true);
+    const erros: string[] = [];
+    try {
+      await backend.definirAutomatico(automatico);
+    } catch (e) {
+      erros.push(ErroApp.de(e).message);
+    }
+    try {
+      await backend.definirIniciarComWindows(iniciarComWindows);
+    } catch (e) {
+      erros.push(ErroApp.de(e).message);
+    }
+    await concluirAssistente();
+    for (const m of erros) avisar("erro", m);
   }
 
   const semInternet = base === "falhou" ? <p className="nota aviso">{T.primeiroUso.semInternet}</p> : null;
@@ -226,7 +248,7 @@ export function FirstRun() {
           <div className="assistente-botoes">
             {comSave.length ? (
               <>
-                <button type="button" className="btn" onClick={() => void concluirAssistente()}>
+                <button type="button" className="btn" onClick={() => setEtapa("automatico")}>
                   {T.primeiroUso.agoraNao}
                 </button>
                 <button type="button" className="btn pri" onClick={() => void backupDeTudo()}>
@@ -234,8 +256,8 @@ export function FirstRun() {
                 </button>
               </>
             ) : (
-              <button type="button" className="btn pri" onClick={() => void concluirAssistente()}>
-                {T.primeiroUso.abrirBiblioteca}
+              <button type="button" className="btn pri" onClick={() => setEtapa("automatico")}>
+                {T.primeiroUso.continuar}
               </button>
             )}
           </div>
@@ -263,8 +285,8 @@ export function FirstRun() {
               ) : null}
               {erroNaTela}
               <div className="assistente-botoes">
-                <button type="button" className="btn pri" onClick={() => void concluirAssistente()}>
-                  {T.primeiroUso.abrirBiblioteca}
+                <button type="button" className="btn pri" onClick={() => setEtapa("automatico")}>
+                  {T.primeiroUso.continuar}
                 </button>
               </div>
             </>
@@ -277,6 +299,40 @@ export function FirstRun() {
       );
       break;
     }
+    case "automatico":
+      conteudo = (
+        <>
+          <span className="assistente-icone">
+            <RefreshCw className="ic" aria-hidden="true" />
+          </span>
+          <h1 ref={titulo} tabIndex={-1}>
+            {T.primeiroUso.automaticoTitulo}
+          </h1>
+          <p className="assistente-texto">{T.primeiroUso.automaticoTexto}</p>
+          <div className="assistente-chaves">
+            <label className="chave-linha">
+              <span>{T.primeiroUso.chaveAutomatico}</span>
+              <input type="checkbox" role="switch" className="chave" checked={automatico} onChange={(e) => setAutomatico(e.target.checked)} />
+            </label>
+            <label className="chave-linha">
+              <span>{T.primeiroUso.chaveIniciar}</span>
+              <input
+                type="checkbox"
+                role="switch"
+                className="chave"
+                checked={iniciarComWindows}
+                onChange={(e) => setIniciarComWindows(e.target.checked)}
+              />
+            </label>
+          </div>
+          <div className="assistente-botoes">
+            <button type="button" className="btn pri" disabled={terminando} onClick={() => void terminar()}>
+              {T.primeiroUso.abrirBiblioteca}
+            </button>
+          </div>
+        </>
+      );
+      break;
   }
 
   return (

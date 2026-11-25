@@ -71,6 +71,83 @@ describe("configurações", () => {
     expect(await within(secao).findByText("D:\\Jogos\\Pasta Escolhida\\cofre")).toBeInTheDocument();
   });
 
+  it("as chaves do segundo plano chamam o comando certo", async () => {
+    const backend = createDemoBackend({ atraso: 0 });
+    const auto = vi.spyOn(backend, "definirAutomatico");
+    const bandeja = vi.spyOn(backend, "definirFecharParaBandeja");
+    const iniciar = vi.spyOn(backend, "definirIniciarComWindows");
+    const notificacoes = vi.spyOn(backend, "definirNotificacoes");
+    renderApp(backend);
+    await abrirConfiguracoes();
+    await userEvent.click(await screen.findByRole("switch", { name: "Fazer backup automático" }));
+    expect(auto).toHaveBeenCalledWith(false);
+    await userEvent.click(screen.getByRole("switch", { name: "Fechar a janela deixa o app na bandeja" }));
+    expect(bandeja).toHaveBeenCalledWith(false);
+    await userEvent.click(screen.getByRole("switch", { name: "Iniciar com o Windows (na bandeja)" }));
+    expect(iniciar).toHaveBeenCalledWith(true);
+    await userEvent.click(screen.getByRole("switch", { name: "Mostrar notificações do Windows" }));
+    expect(notificacoes).toHaveBeenCalledWith(true);
+    expect(screen.getByText("O app registra o nome e o ícone dele no seu usuário do Windows. Dá para remover.")).toBeInTheDocument();
+  });
+
+  it("Salvar da retenção manda os 3 números", async () => {
+    const backend = createDemoBackend({ atraso: 0 });
+    const spy = vi.spyOn(backend, "definirRetencao");
+    renderApp(backend);
+    await abrirConfiguracoes();
+    for (const [campo, valor] of [
+      ["Guardar os últimos", "5"],
+      ["Dias com 1 backup por dia", "3"],
+      ["Semanas com 1 backup por semana", "2"],
+    ]) {
+      const entrada = await screen.findByRole("spinbutton", { name: campo });
+      await userEvent.clear(entrada);
+      await userEvent.type(entrada, valor);
+    }
+    await userEvent.click(screen.getByRole("button", { name: "Salvar a retenção" }));
+    expect(spy).toHaveBeenCalledWith({ autoRecent: 5, autoDailyDays: 3, autoWeeklyWeeks: 2 });
+  });
+
+  it("Salvar dos tempos manda os valores digitados, e fora da faixa mostra o erro", async () => {
+    const backend = createDemoBackend({ atraso: 0 });
+    const spy = vi.spyOn(backend, "definirTemposDoAutomatico");
+    renderApp(backend);
+    await abrirConfiguracoes();
+    const preencher = async (campo: string, valor: string) => {
+      const entrada = await screen.findByRole("spinbutton", { name: campo });
+      await userEvent.clear(entrada);
+      await userEvent.type(entrada, valor);
+    };
+    await preencher("Segundos depois de fechar o jogo", "20");
+    await preencher("Minutos entre backups com o jogo aberto", "30");
+    await preencher("Segundos sem mudanças", "90");
+    await userEvent.click(screen.getByRole("button", { name: "Salvar os tempos" }));
+    expect(spy).toHaveBeenCalledWith({ quietSecs: 90, afterCloseSecs: 20, whileRunningMins: 30 });
+    await preencher("Minutos entre backups com o jogo aberto", "200");
+    await userEvent.click(screen.getByRole("button", { name: "Salvar os tempos" }));
+    expect(await screen.findByRole("alert")).toHaveTextContent("Use um valor entre 5 e 120 minutos.");
+  });
+
+  it("Remover registros do Windows só remove depois de confirmar, e as chaves desligam", async () => {
+    const backend = createDemoBackend({ atraso: 0 });
+    await backend.definirIniciarComWindows(true);
+    await backend.definirNotificacoes(true);
+    const spy = vi.spyOn(backend, "removerRegistrosDoWindows");
+    renderApp(backend);
+    await abrirConfiguracoes();
+    expect(await screen.findByRole("switch", { name: "Iniciar com o Windows (na bandeja)" })).toBeChecked();
+    await userEvent.click(screen.getByRole("button", { name: "Remover registros do Windows" }));
+    let d = await screen.findByRole("dialog", { name: "Remover a entrada de iniciar com o Windows e o registro das notificações?" });
+    await userEvent.click(within(d).getByRole("button", { name: "Cancelar" }));
+    expect(spy).not.toHaveBeenCalled();
+    await userEvent.click(screen.getByRole("button", { name: "Remover registros do Windows" }));
+    d = await screen.findByRole("dialog", { name: "Remover a entrada de iniciar com o Windows e o registro das notificações?" });
+    await userEvent.click(within(d).getByRole("button", { name: "Remover" }));
+    expect(spy).toHaveBeenCalledTimes(1);
+    await waitFor(() => expect(screen.getByRole("switch", { name: "Iniciar com o Windows (na bandeja)" })).not.toBeChecked());
+    expect(screen.getByRole("switch", { name: "Mostrar notificações do Windows" })).not.toBeChecked();
+  });
+
   it("Sobre mostra a versão e os créditos", async () => {
     renderApp(createDemoBackend({ atraso: 0 }));
     await abrirConfiguracoes();

@@ -619,3 +619,68 @@ input.chave:checked::after {
   color: var(--tx3);
   font-variant-numeric: tabular-nums;
 }
+
+/* Configurações do automático: frases com números */
+.cfg-bloco {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  padding-top: 12px;
+  border-top: 1px dashed rgba(255, 255, 255, 0.07);
+}
+
+.cfg-sub {
+  color: #fff;
+  font-weight: 650;
+  font-size: 12.5px;
+}
+
+.cfg-frase {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 6px 8px;
+  color: var(--tx2);
+  font-size: 12.5px;
+}
+
+.cfg-frase .btn-pequeno {
+  margin-left: auto;
+}
+
+.cfg-bloco .erro-form {
+  margin: 2px 0 0;
+}
+
+input.numero {
+  width: 58px;
+  height: 28px;
+  padding: 0 6px;
+  border-radius: 8px;
+  background: var(--panel2);
+  border: 1px solid var(--line);
+  color: var(--tx);
+  font: inherit;
+  font-size: 12.5px;
+  text-align: center;
+}
+
+input.numero:focus-visible {
+  outline: 2px solid var(--acc);
+  outline-offset: 1px;
+}
+
+/* Primeiro uso, passo 6: as duas chaves */
+.assistente-chaves {
+  width: 100%;
+  max-width: 420px;
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+  margin-top: 20px;
+  padding: 16px 18px;
+  border-radius: var(--r-md);
+  background: var(--panel);
+  border: 1px solid var(--line);
+  text-align: left;
+}
