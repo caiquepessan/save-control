@@ -773,6 +773,7 @@ impl AppService {
     }
 
     pub fn set_retention(&mut self, r: RetentionView) -> Res<()> {
+        retencao_valida(&r)?;
         let p = self.policy(&r);
         self.config.retention = p.clone();
         self.save_config()?;
@@ -783,6 +784,9 @@ impl AppService {
     }
 
     pub fn set_game_retention(&mut self, id: &str, r: Option<RetentionView>) -> Res<()> {
+        if let Some(r) = &r {
+            retencao_valida(r)?;
+        }
         let p = r.map(|r| self.policy(&r));
         self.engine()?.update_game_settings(id, |s| s.retention = p)?;
         Ok(())
@@ -984,5 +988,15 @@ impl AppService {
     pub fn save_window(&mut self, w: WindowState) -> Res<()> {
         self.config.window = Some(w);
         self.save_config()
+    }
+}
+
+/// Pelo menos 1 automático recente (com 0 recentes, 0 dias e 0 semanas a
+/// limpeza apagaria cada automático logo depois de feito) e no máximo 99.
+fn retencao_valida(r: &RetentionView) -> Res<()> {
+    if (1..=99).contains(&r.auto_recent) && r.auto_daily_days <= 99 && r.auto_weekly_weeks <= 99 {
+        Ok(())
+    } else {
+        Err(erro(texts::RETENCAO))
     }
 }

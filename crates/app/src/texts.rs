@@ -20,6 +20,8 @@ pub const TEMPO_SEGUNDOS: &str = "Use um valor entre 5 e 600 segundos.";
 
 pub const TEMPO_MINUTOS: &str = "Use um valor entre 5 e 120 minutos.";
 
+pub const RETENCAO: &str = "Use de 1 a 99 backups recentes, e de 0 a 99 dias e semanas.";
+
 /// Tamanho como a interface mostra: KB abaixo de 512 KB, MB abaixo de 512 MB, senão GB.
 pub fn tamanho(bytes: u64) -> String {
     const KB: f64 = 1024.0;

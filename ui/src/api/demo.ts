@@ -348,6 +348,11 @@ export function createDemoBackend(opcoes: OpcoesDemo = {}): DemoBackend {
     situacao = { ...situacao, ...s, watching: vigiados() };
     canais.situacao.emitir(copia(situacao));
   };
+  /** Como o app: pelo menos 1 automático recente, e no máximo 99 em cada campo. */
+  const validarRetencao = (r: RetentionView) => {
+    const ok = r.autoRecent >= 1 && r.autoRecent <= 99 && r.autoDailyDays <= 99 && r.autoWeeklyWeeks <= 99;
+    if (!ok) throw new ErroApp({ kind: "erro", message: "Use de 1 a 99 backups recentes, e de 0 a 99 dias e semanas.", root: null, alias: null, candidates: [] });
+  };
   /** O app sai do primeiro uso ou do cofre sumido: o automático começa. */
   const comecar = () => {
     if (situacao.state === "parado") mudarSituacao({ state: config.autoBackup ? "ativo" : "desligado" });
@@ -660,10 +665,12 @@ export function createDemoBackend(opcoes: OpcoesDemo = {}): DemoBackend {
     },
     async definirRetencao(politica) {
       await espera();
+      validarRetencao(politica);
       config.retention = { ...politica };
     },
     async definirRetencaoDoJogo(id, politica) {
       await espera();
+      if (politica) validarRetencao(politica);
       achar(id).retention = politica ? { ...politica } : null;
     },
     async definirTemposDoAutomatico(tempos) {

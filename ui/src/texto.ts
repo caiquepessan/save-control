@@ -213,6 +213,37 @@ export const T = {
     esquecer: "Esquecer",
     ignorar: "Ignorar este jogo",
     ignorado: (t: string) => `${t} foi ignorado. Dá para voltar a mostrar em Configurações.`,
+    automatico: "Backup automático deste jogo",
+    automaticoAjuda: "Desligado, este jogo só ganha backup quando você pedir.",
+    retencao: "Retenção dos automáticos",
+    retencaoAjuda: "Backups com nome e fixados nunca são apagados.",
+    usarPadrao: (r: { autoRecent: number; autoDailyDays: number; autoWeeklyWeeks: number } | null) =>
+      r
+        ? `Usar o padrão (${r.autoRecent} ${plural(r.autoRecent, "último", "últimos")} · ${r.autoDailyDays} ${plural(r.autoDailyDays, "dia", "dias")} · ${r.autoWeeklyWeeks} ${plural(r.autoWeeklyWeeks, "semana", "semanas")})`
+        : "Usar o padrão",
+    personalizar: "Personalizar",
+    ultimos: "Últimos",
+    dias: "Dias",
+    semanas: "Semanas",
+    salvar: "Salvar",
+    faixas: "Últimos: de 1 a 99. Dias e semanas: de 0 a 99.",
+    retencaoSalva: "Retenção salva.",
+    configs: "Arquivos de configuração",
+    configsIgual: "Igual às Configurações",
+    configsIncluir: "Incluir",
+    configsNao: "Não incluir",
+  },
+  historico: {
+    fixar: "Fixar este backup",
+    desafixar: "Desafixar este backup",
+    apagar: "Apagar este backup",
+  },
+  apagarBackup: {
+    titulo: "Apagar este backup?",
+    texto: (versao: string) => `${versao} sai do cofre e não dá para desfazer.`,
+    cancelar: "Cancelar",
+    confirmar: "Apagar",
+    feito: "Backup apagado.",
   },
   selecao: {
     titulo: "Restaurar arquivos de uma versão",

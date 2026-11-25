@@ -539,3 +539,110 @@
 .destino-lembrado .lnk {
   flex: none;
 }
+
+/* Ajustes do jogo: opções (rádio) e campos da retenção */
+.escolhas {
+  display: flex;
+  flex-direction: column;
+  gap: 7px;
+}
+
+.escolha {
+  display: flex;
+  align-items: center;
+  gap: 9px;
+  color: var(--tx);
+  font-size: 12.5px;
+  cursor: pointer;
+}
+
+.escolha input {
+  width: 15px;
+  height: 15px;
+  margin: 0;
+  accent-color: var(--acc);
+  flex: none;
+}
+
+.retencao-campos {
+  display: flex;
+  align-items: flex-end;
+  flex-wrap: wrap;
+  gap: 10px;
+  padding-left: 24px;
+}
+
+.campo-numero {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  font-size: 11px;
+  font-weight: 600;
+  color: var(--tx3);
+}
+
+.campo-numero input {
+  width: 66px;
+  height: 30px;
+  padding: 0 8px;
+  border-radius: 8px;
+  background: var(--panel2);
+  border: 1px solid var(--line);
+  color: var(--tx);
+  font: inherit;
+  font-size: 12.5px;
+}
+
+.campo-numero input:focus-visible {
+  outline: 2px solid var(--acc);
+  outline-offset: 1px;
+}
+
+.ajuda.alerta {
+  color: var(--warn);
+}
+
+/* Histórico: fixar, apagar e restaurar aparecem no hover da versão */
+.ti > .ti-acoes {
+  flex: none;
+  display: flex;
+  align-items: center;
+  gap: 4px;
+}
+
+.ti-ib {
+  width: 30px;
+  height: 30px;
+  display: grid;
+  place-items: center;
+  border-radius: 9px;
+  color: var(--tx2);
+  opacity: 0;
+  transition:
+    opacity var(--dur),
+    background var(--dur),
+    color var(--dur);
+}
+
+.ti-ib .ic {
+  width: 15px;
+  height: 15px;
+}
+
+.ti-ib:hover {
+  background: rgba(255, 255, 255, 0.08);
+  color: #fff;
+}
+
+.ti-ib.fixado {
+  color: var(--acc);
+}
+
+.ti-ib.fixado .ic {
+  fill: currentColor;
+}
+
+.ti:hover .ti-ib,
+.ti:focus-within .ti-ib {
+  opacity: 1;
+}

@@ -9,6 +9,7 @@ import type { AutoStatusView } from "../api/gerado/AutoStatusView";
 import type { GameView } from "../api/gerado/GameView";
 import type { LibraryView } from "../api/gerado/LibraryView";
 import type { RestoreResultView } from "../api/gerado/RestoreResultView";
+import type { RetentionView } from "../api/gerado/RetentionView";
 import type { SnapshotView } from "../api/gerado/SnapshotView";
 import { FILTRO_INICIAL, type Filtro } from "../lib/library";
 import { T } from "../texto";
@@ -38,7 +39,11 @@ export interface Painel {
   modoRestaurar: boolean;
 }
 
-export type Dialogo = { tipo: "adicionar" } | { tipo: "renomear"; id: string } | { tipo: "remover"; id: string };
+export type Dialogo =
+  | { tipo: "adicionar" }
+  | { tipo: "renomear"; id: string }
+  | { tipo: "remover"; id: string }
+  | { tipo: "apagarBackup"; id: string; arquivo: string };
 
 /** Uma restauração pedida (a confirmação é desenhada a partir disto). */
 export interface PedidoRestauracao {
@@ -122,6 +127,14 @@ export interface AppState {
   trocarCapa(id: string): Promise<void>;
   definirPastaDoJogo(id: string, pasta: string | null): Promise<void>;
   esquecerDestino(id: string, template: string): Promise<void>;
+  /** Os ajustes do automático por jogo devolvem se deu certo (erro vira aviso). */
+  definirAutomaticoDoJogo(id: string, ligado: boolean): Promise<boolean>;
+  /** `null` = o jogo volta a usar o padrão. */
+  definirRetencaoDoJogo(id: string, politica: RetentionView | null): Promise<boolean>;
+  /** `null` = o jogo segue o ajuste geral. */
+  definirIncluirConfigDoJogo(id: string, valor: boolean | null): Promise<boolean>;
+  fixarBackup(id: string, arquivo: string, fixado: boolean): Promise<void>;
+  apagarBackup(id: string, arquivo: string): Promise<void>;
   avisar(tipo: Toast["tipo"], texto: string): void;
   fecharToast(id: number): void;
 }
@@ -468,6 +481,39 @@ export function createAppStore(backend: Backend) {
 
     async esquecerDestino(id, template) {
       await acaoNoJogo(() => backend.esquecerDestino(id, template));
+    },
+
+    async definirAutomaticoDoJogo(id, ligado) {
+      return acaoNoJogo(() => backend.definirAutomaticoDoJogo(id, ligado));
+    },
+
+    async definirRetencaoDoJogo(id, politica) {
+      return acaoNoJogo(() => backend.definirRetencaoDoJogo(id, politica));
+    },
+
+    async definirIncluirConfigDoJogo(id, valor) {
+      return acaoNoJogo(() => backend.definirIncluirConfigDoJogo(id, valor));
+    },
+
+    async fixarBackup(id, arquivo, fixado) {
+      try {
+        await backend.fixarBackup(id, arquivo, fixado);
+      } catch (e) {
+        get().avisar("erro", ErroApp.de(e).message);
+      }
+      await get().carregarHistorico(id);
+      await get().carregarBiblioteca();
+    },
+
+    async apagarBackup(id, arquivo) {
+      try {
+        await backend.apagarBackup(id, arquivo);
+        get().avisar("info", T.apagarBackup.feito);
+      } catch (e) {
+        get().avisar("erro", ErroApp.de(e).message);
+      }
+      await get().carregarHistorico(id);
+      await get().carregarBiblioteca();
     },
 
     avisar(tipo, texto) {

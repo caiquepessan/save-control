@@ -308,3 +308,19 @@ fn avisos_de_abertura_so_na_primeira_janela() {
     assert!(de_novo.warnings.is_empty(), "{:?}", de_novo.warnings);
     assert_eq!(de_novo.phase, AppPhase::Pronto);
 }
+
+/// Retenção sem nenhum backup recente (0 últimos) apagaria cada automático
+/// logo depois de feito: o serviço recusa, no geral e no jogo.
+#[test]
+fn retencao_sem_backup_recente_da_erro() {
+    let w = mundo();
+    let mut s = pronto(&w);
+    let zero = RetentionView { auto_recent: 0, auto_daily_days: 0, auto_weekly_weeks: 0 };
+    assert_eq!(s.set_retention(zero.clone()).unwrap_err().message, texts::RETENCAO);
+    let demais = RetentionView { auto_recent: 100, auto_daily_days: 7, auto_weekly_weeks: 4 };
+    assert_eq!(s.set_retention(demais).unwrap_err().message, texts::RETENCAO);
+    let (id, _) = jogo(&mut s, &w, "Retido", &[]);
+    assert_eq!(s.set_game_retention(&id, Some(zero)).unwrap_err().message, texts::RETENCAO);
+    assert_eq!(s.settings().unwrap().retention.auto_recent, 10, "não gravou a retenção recusada");
+    assert_eq!(view(&mut s, &id).retention, None, "não gravou a retenção recusada do jogo");
+}
