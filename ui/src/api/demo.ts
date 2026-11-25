@@ -1,11 +1,16 @@
 // Backend de demonstração: jogos fictícios para ver a interface no navegador
 // (npm run dev) e para os testes. Nada aqui toca em arquivos de verdade.
 import { ErroApp, type Backend } from "./backend";
+import type { ActivityView } from "./gerado/ActivityView";
 import type { AppPhase } from "./gerado/AppPhase";
 import type { AppStateView } from "./gerado/AppStateView";
+import type { AutoBackupView } from "./gerado/AutoBackupView";
+import type { AutoStatusView } from "./gerado/AutoStatusView";
+import type { AutoTimesView } from "./gerado/AutoTimesView";
 import type { BackupResultView } from "./gerado/BackupResultView";
 import type { GameView } from "./gerado/GameView";
 import type { LibraryView } from "./gerado/LibraryView";
+import type { RetentionView } from "./gerado/RetentionView";
 import type { RootView } from "./gerado/RootView";
 import type { SnapshotKindView } from "./gerado/SnapshotKindView";
 import type { SnapshotView } from "./gerado/SnapshotView";
@@ -20,6 +25,27 @@ export interface OpcoesDemo {
 export interface DemoBackend extends Backend {
   emitirCapa(id: string, caminho: string): void;
   emitirFecharBloqueado(): void;
+  emitirSituacao(s: AutoStatusView): void;
+  emitirBibliotecaMudou(): void;
+  emitirBackupAutomatico(itens: AutoBackupView[]): void;
+  emitirAbrirJogo(id: string): void;
+  emitirAviso(texto: string): void;
+}
+
+/** Ouvintes de um evento do app. */
+function canal<A extends unknown[]>() {
+  const ouvintes = new Set<(...a: A) => void>();
+  return {
+    ouvir(cb: (...a: A) => void) {
+      ouvintes.add(cb);
+      return () => {
+        ouvintes.delete(cb);
+      };
+    },
+    emitir(...a: A) {
+      ouvintes.forEach((cb) => cb(...a));
+    },
+  };
 }
 
 export const IDS = {
@@ -230,6 +256,27 @@ const ESPECIAIS: Record<string, Partial<SnapshotView>[]> = {
   [IDS.academia]: [{}, { pcName: "NOTEBOOK-SALA", fromThisPc: false }],
 };
 
+/** A Atividade de exemplo, da mais nova à mais velha. */
+function criarAtividade(agora: number): ActivityView[] {
+  const ha = (min: number) => new Date(agora - min * 60_000).toISOString();
+  return [
+    { at: ha(4), kind: "backupAuto", gameId: IDS.reino, title: "Reino Esmeralda: A Flauta do Tempo", detail: "7 arquivos · 1,2 MB" },
+    { at: ha(2 * 60), kind: "backupManual", gameId: IDS.academia, title: "Academia Arcana", detail: "2 arquivos · 14,0 MB" },
+    {
+      at: ha(3 * 60),
+      kind: "error",
+      gameId: IDS.estrela,
+      title: "Estrela Saltitante 64",
+      detail: "O arquivo ESTRELA SALTITANTE.eep estava em uso. Nova tentativa em 5 min.",
+    },
+    { at: ha(26 * 60), kind: "restore", gameId: IDS.baloes, title: "Balões em Defesa 6", detail: "1 arquivo restaurado · o save anterior ficou no histórico" },
+    { at: ha(2 * 24 * 60), kind: "notice", gameId: null, title: null, detail: "O cofre voltou. O backup automático continua de onde parou." },
+  ];
+}
+
+const RETENCAO_PADRAO: RetentionView = { autoRecent: 10, autoDailyDays: 7, autoWeeklyWeeks: 4 };
+const TEMPOS_PADRAO: AutoTimesView = { quietSecs: 60, afterCloseSecs: 10, whileRunningMins: 15 };
+
 export function createDemoBackend(opcoes: OpcoesDemo = {}): DemoBackend {
   const atraso = opcoes.atraso ?? 500;
   let fase: AppPhase = opcoes.fase ?? "pronto";
@@ -252,10 +299,46 @@ export function createDemoBackend(opcoes: OpcoesDemo = {}): DemoBackend {
   // Como o app: uma pasta que não é cofre nem se chama "cofre" finge ter outros
   // arquivos, então o cofre novo vai para a subpasta "cofre" dela.
   const destino = (pasta: string) => (temCofre(pasta) || /\\cofre$/i.test(pasta) ? pasta : `${pasta}\\cofre`);
-  const config ={ userRoots: ["D:\\Jogos"], includeConfig: false, steamCovers: true, manifestLoaded: true };
+  const config = {
+    userRoots: ["D:\\Jogos"],
+    includeConfig: false,
+    steamCovers: true,
+    manifestLoaded: true,
+    autoBackup: true,
+    retention: { ...RETENCAO_PADRAO },
+    autoTimes: { ...TEMPOS_PADRAO },
+    closeToTray: true,
+    notifications: false,
+    startWithWindows: false,
+  };
   const abertos = new Set<string>([IDS.reino]);
   const ouvintesCapa = new Set<(id: string, caminho: string) => void>();
   const ouvintesFechar = new Set<() => void>();
+  const atividade = criarAtividade(Date.now());
+  const vigiados = () => jogos.filter((g) => !g.vaultOnly && g.roots.length > 0 && g.autoBackup).length;
+  let situacao: AutoStatusView = {
+    state: fase === "pronto" ? "ativo" : "parado",
+    pausedUntil: null,
+    watching: vigiados(),
+    busy: false,
+    lastBackup: { title: "Reino Esmeralda: A Flauta do Tempo", at: atividade[0].at },
+  };
+  const canais = {
+    situacao: canal<[AutoStatusView]>(),
+    biblioteca: canal<[]>(),
+    backupAutomatico: canal<[AutoBackupView[]]>(),
+    abrirJogo: canal<[string]>(),
+    aviso: canal<[string]>(),
+  };
+  /** Como o trabalhador do app: muda a situação e avisa a janela. */
+  const mudarSituacao = (s: Partial<AutoStatusView>) => {
+    situacao = { ...situacao, ...s, watching: vigiados() };
+    canais.situacao.emitir(copia(situacao));
+  };
+  /** O app sai do primeiro uso ou do cofre sumido: o automático começa. */
+  const comecar = () => {
+    if (situacao.state === "parado") mudarSituacao({ state: config.autoBackup ? "ativo" : "desligado" });
+  };
 
   const espera = () => (atraso > 0 ? new Promise<void>((r) => setTimeout(r, atraso)) : Promise.resolve());
   const copia = <X>(x: X): X => structuredClone(x);
@@ -477,12 +560,12 @@ export function createDemoBackend(opcoes: OpcoesDemo = {}): DemoBackend {
         includeConfig: config.includeConfig,
         steamCovers: config.steamCovers,
         manifestLoaded: config.manifestLoaded,
-        autoBackup: true,
-        retention: { autoRecent: 10, autoDailyDays: 7, autoWeeklyWeeks: 4 },
-        autoTimes: { quietSecs: 60, afterCloseSecs: 10, whileRunningMins: 15 },
-        closeToTray: true,
-        notifications: false,
-        startWithWindows: false,
+        autoBackup: config.autoBackup,
+        retention: { ...config.retention },
+        autoTimes: { ...config.autoTimes },
+        closeToTray: config.closeToTray,
+        notifications: config.notifications,
+        startWithWindows: config.startWithWindows,
         ignored: ignorados.map((g) => ({ id: g.id, title: g.title })),
         version: "0.1.0",
       };
@@ -506,6 +589,7 @@ export function createDemoBackend(opcoes: OpcoesDemo = {}): DemoBackend {
       cofres.add(p);
       cofre = p;
       fase = "pronto";
+      comecar();
       return estado();
     },
     async inspecionarCofre(pasta) {
@@ -518,6 +602,7 @@ export function createDemoBackend(opcoes: OpcoesDemo = {}): DemoBackend {
       // Na demonstração, o HD "volta" na primeira tentativa.
       cofres.add(cofre);
       fase = "pronto";
+      comecar();
       return estado();
     },
     async atualizarBase() {
@@ -531,11 +616,106 @@ export function createDemoBackend(opcoes: OpcoesDemo = {}): DemoBackend {
       cofres.add(p);
       cofre = p;
       fase = "pronto";
+      comecar();
       return estado();
     },
     async jogosAbertos() {
       await espera();
       return [...abertos];
+    },
+    async situacaoAutomatico() {
+      await espera();
+      return copia({ ...situacao, watching: vigiados() });
+    },
+    async definirAutomatico(ligado) {
+      await espera();
+      config.autoBackup = ligado;
+      mudarSituacao({ state: ligado ? "ativo" : "desligado", pausedUntil: null });
+    },
+    async pausarAutomatico(minutos) {
+      await espera();
+      mudarSituacao({ state: "pausado", pausedUntil: minutos ? new Date(Date.now() + minutos * 60_000).toISOString() : null });
+    },
+    async retomarAutomatico() {
+      await espera();
+      mudarSituacao({ state: config.autoBackup ? "ativo" : "desligado", pausedUntil: null });
+    },
+    async definirAutomaticoDoJogo(id, ligado) {
+      await espera();
+      achar(id).autoBackup = ligado;
+      mudarSituacao({});
+    },
+    async definirRetencao(politica) {
+      await espera();
+      config.retention = { ...politica };
+    },
+    async definirRetencaoDoJogo(id, politica) {
+      await espera();
+      achar(id).retention = politica ? { ...politica } : null;
+    },
+    async definirTemposDoAutomatico(tempos) {
+      await espera();
+      const segundos = (n: number) => n >= 5 && n <= 600;
+      if (!segundos(tempos.quietSecs) || !segundos(tempos.afterCloseSecs)) throw erro("erro", "Use um valor entre 5 e 600 segundos.");
+      if (tempos.whileRunningMins < 5 || tempos.whileRunningMins > 120) throw erro("erro", "Use um valor entre 5 e 120 minutos.");
+      config.autoTimes = { ...tempos };
+    },
+    async definirIncluirConfigDoJogo(id, valor) {
+      await espera();
+      achar(id).includeConfig = valor;
+    },
+    async fixarBackup(id, arquivo, fixado) {
+      await espera();
+      achar(id);
+      const s = versao(id, arquivo);
+      if (fixado && s.kind === "auto") {
+        s.kind = "fixado";
+        s.fileName = s.fileName.replace(/_auto\.zip$/, "_fixado.zip");
+      } else if (!fixado && s.kind === "fixado") {
+        s.kind = "auto";
+        s.fileName = s.fileName.replace(/_fixado\.zip$/, "_auto.zip");
+      } else {
+        throw erro("naoEncontrado", `Não encontrado: backup automático ${arquivo}`);
+      }
+      return copia(s);
+    },
+    async apagarBackup(id, arquivo) {
+      await espera();
+      const g = achar(id);
+      versao(id, arquivo);
+      historicos.set(id, (historicos.get(id) ?? []).filter((v) => v.fileName !== arquivo));
+      g.backupCount = Math.max(0, g.backupCount - 1);
+      vault.versions = Math.max(0, vault.versions - 1);
+      if (g.backupCount === 0) {
+        g.lastBackup = null;
+        if (g.fileCount > 0) g.status = "semBackup";
+      }
+      atividade.unshift({ at: new Date().toISOString(), kind: "notice", gameId: id, title: g.title, detail: "Backup apagado" });
+    },
+    async atividade(limite) {
+      await espera();
+      return copia(atividade.slice(0, limite ?? 200));
+    },
+    async definirFecharParaBandeja(ligado) {
+      await espera();
+      config.closeToTray = ligado;
+    },
+    async definirIniciarComWindows(ligado) {
+      await espera();
+      config.startWithWindows = ligado;
+    },
+    async definirNotificacoes(ligado) {
+      await espera();
+      config.notifications = ligado;
+    },
+    async removerRegistrosDoWindows() {
+      await espera();
+      config.startWithWindows = false;
+      config.notifications = false;
+    },
+    async jogoParaAbrir() {
+      await espera();
+      return null;
     },
     aoReceberCapa(cb) {
       ouvintesCapa.add(cb);
@@ -549,6 +729,11 @@ export function createDemoBackend(opcoes: OpcoesDemo = {}): DemoBackend {
         ouvintesFechar.delete(cb);
       };
     },
+    aoMudarSituacao: (cb) => canais.situacao.ouvir(cb),
+    aoMudarBiblioteca: (cb) => canais.biblioteca.ouvir(cb),
+    aoFazerBackupAutomatico: (cb) => canais.backupAutomatico.ouvir(cb),
+    aoAbrirJogo: (cb) => canais.abrirJogo.ouvir(cb),
+    aoAvisar: (cb) => canais.aviso.ouvir(cb),
     srcDaImagem: (caminho) => caminho,
     janela: {
       async minimizar() {},
@@ -565,6 +750,22 @@ export function createDemoBackend(opcoes: OpcoesDemo = {}): DemoBackend {
     },
     emitirFecharBloqueado() {
       ouvintesFechar.forEach((cb) => cb());
+    },
+    emitirSituacao(s) {
+      situacao = { ...s };
+      canais.situacao.emitir(copia(situacao));
+    },
+    emitirBibliotecaMudou() {
+      canais.biblioteca.emitir();
+    },
+    emitirBackupAutomatico(itens) {
+      canais.backupAutomatico.emitir(copia(itens));
+    },
+    emitirAbrirJogo(id) {
+      canais.abrirJogo.emitir(id);
+    },
+    emitirAviso(texto) {
+      canais.aviso.emitir(texto);
     },
   };
   return backend;

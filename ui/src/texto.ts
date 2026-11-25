@@ -33,6 +33,17 @@ export const T = {
     versoes: (tam: string, n: number) => `${tam} · ${n} ${plural(n, "versão guardada", "versões guardadas")}`,
     indisponivel: "Cofre indisponível",
   },
+  automatico: {
+    rotulo: "Backup automático",
+    vigiando: (n: number) => `Vigiando ${n} ${plural(n, "jogo", "jogos")}`,
+    pausadoAte: (hora: string) => `Pausado até ${hora}`,
+    pausadoAteReabrir: "Pausado até reabrir",
+    retomar: "Retomar",
+    desligado: "Desligado",
+    cofreFora: "Pausado até o cofre voltar",
+    iniciando: "Iniciando…",
+    feito: (titulos: string[]) => `Backup automático feito · ${titulos.join(", ")}`,
+  },
   biblioteca: {
     busca: "Buscar jogo, emulador ou pasta…",
     atalhoBusca: "Ctrl K",
@@ -127,7 +138,7 @@ export const T = {
     escolherOutra: "Escolher outra pasta…",
     feito: "Restaurado.",
     feitoComSeguranca: 'Restaurado. Seu save anterior está no histórico como "Antes de restaurar".',
-    fecharBloqueado: "Espere terminar: o Save Control não fecha no meio de um backup ou restauração.",
+    fecharBloqueado: "Terminando o backup… o Save Control fecha assim que ele acabar.",
   },
   adicionar: {
     titulo: "Adicionar jogo",

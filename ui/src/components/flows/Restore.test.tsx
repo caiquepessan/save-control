@@ -120,12 +120,12 @@ describe("restaurar", () => {
     expect(await screen.findByRole("alert")).toHaveTextContent(msg);
   });
 
-  it("avisa quando o fechar é bloqueado", async () => {
+  it("avisa que o Sair está esperando o backup terminar", async () => {
     const backend = createDemoBackend({ atraso: 0 });
     renderApp(backend);
     await screen.findByRole("heading", { name: "Seus jogos" });
     act(() => backend.emitirFecharBloqueado());
-    expect(await screen.findByText("Espere terminar: o Save Control não fecha no meio de um backup ou restauração.")).toBeInTheDocument();
+    expect(await screen.findByText("Terminando o backup… o Save Control fecha assim que ele acabar.")).toBeInTheDocument();
   });
 
   it("depois de restaurar, avisa onde está o save anterior e recarrega o histórico", async () => {

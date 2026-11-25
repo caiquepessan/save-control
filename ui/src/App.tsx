@@ -41,14 +41,26 @@ export function App() {
   const carregarEstado = useApp((s) => s.carregarEstado);
   const aplicarCapa = useApp((s) => s.aplicarCapa);
   const avisar = useApp((s) => s.avisar);
+  const aplicarSituacao = useApp((s) => s.aplicarSituacao);
+  const recarregarDoApp = useApp((s) => s.recarregarDoApp);
+  const abrirJogoNoHistorico = useApp((s) => s.abrirJogoNoHistorico);
 
   useEffect(() => {
     void carregarEstado();
   }, [carregarEstado]);
   // Capas da Steam baixadas em segundo plano chegam por evento (também durante o primeiro uso).
   useEffect(() => backend.aoReceberCapa(aplicarCapa), [backend, aplicarCapa]);
-  // A janela não fecha no meio de um backup ou restauração: avisa por quê.
+  // O "Sair" espera o backup ou a restauração em andamento: avisa por quê.
   useEffect(() => backend.aoBloquearFechar(() => avisar("info", T.restaurar.fecharBloqueado)), [backend, avisar]);
+  // O que o backup automático conta em segundo plano.
+  useEffect(() => backend.aoMudarSituacao(aplicarSituacao), [backend, aplicarSituacao]);
+  useEffect(() => backend.aoMudarBiblioteca(() => void recarregarDoApp()), [backend, recarregarDoApp]);
+  useEffect(
+    () => backend.aoFazerBackupAutomatico((itens) => avisar("ok", T.automatico.feito(itens.map((i) => i.title)))),
+    [backend, avisar],
+  );
+  useEffect(() => backend.aoAbrirJogo(abrirJogoNoHistorico), [backend, abrirJogoNoHistorico]);
+  useEffect(() => backend.aoAvisar((texto) => avisar("aviso", texto)), [backend, avisar]);
 
   let conteudo;
   if (erroInicial) conteudo = <Failed erro={erroInicial} pastaDeDados={null} />;

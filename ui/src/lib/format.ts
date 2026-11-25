@@ -33,12 +33,17 @@ export function tempoRelativo(iso: string, agora: Date = new Date()): string {
   return diaEMes(d, agora);
 }
 
+/** "09:05" (hora local). */
+export function hora(iso: string): string {
+  const d = new Date(iso);
+  return `${String(d.getHours()).padStart(2, "0")}:${String(d.getMinutes()).padStart(2, "0")}`;
+}
+
 /** "hoje, 10:02", "ontem, 19:05", "19 nov, 15:02", "19 nov 2025, 15:02". */
 export function dataEHora(iso: string, agora: Date = new Date()): string {
   const d = new Date(iso);
-  const hora = `${String(d.getHours()).padStart(2, "0")}:${String(d.getMinutes()).padStart(2, "0")}`;
   const dia = mesmoDia(d, agora) ? T.tempo.hoje : foiOntem(d, agora) ? T.tempo.ontem : diaEMes(d, agora);
-  return `${dia}, ${hora}`;
+  return `${dia}, ${hora(iso)}`;
 }
 
 /** "512 B", "41 KB", "0,9 MB", "1,2 MB", "1,4 GB" (a partir de meio MB/GB, sobe de unidade). */

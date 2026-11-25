@@ -3,8 +3,12 @@
 import { convertFileSrc, invoke } from "@tauri-apps/api/core";
 import { listen } from "@tauri-apps/api/event";
 import { getCurrentWindow } from "@tauri-apps/api/window";
+import type { ActivityView } from "./gerado/ActivityView";
 import type { AddGameRequest } from "./gerado/AddGameRequest";
 import type { AppStateView } from "./gerado/AppStateView";
+import type { AutoBackupView } from "./gerado/AutoBackupView";
+import type { AutoStatusView } from "./gerado/AutoStatusView";
+import type { AutoTimesView } from "./gerado/AutoTimesView";
 import type { BackupManyView } from "./gerado/BackupManyView";
 import type { BackupResultView } from "./gerado/BackupResultView";
 import type { ErrorKind } from "./gerado/ErrorKind";
@@ -15,6 +19,7 @@ import type { ManifestUpdateView } from "./gerado/ManifestUpdateView";
 import type { RestorePreviewView } from "./gerado/RestorePreviewView";
 import type { RestoreRequest } from "./gerado/RestoreRequest";
 import type { RestoreResultView } from "./gerado/RestoreResultView";
+import type { RetentionView } from "./gerado/RetentionView";
 import type { SettingsView } from "./gerado/SettingsView";
 import type { SnapshotFileView } from "./gerado/SnapshotFileView";
 import type { SnapshotView } from "./gerado/SnapshotView";
@@ -58,10 +63,41 @@ export interface Backend {
   atualizarBase(): Promise<ManifestUpdateView>;
   concluirPrimeiroUso(pastaDoCofre: string): Promise<AppStateView>;
   jogosAbertos(): Promise<string[]>;
+  situacaoAutomatico(): Promise<AutoStatusView>;
+  definirAutomatico(ligado: boolean): Promise<void>;
+  /** Pausa o backup automático; `null` = até reabrir o app. */
+  pausarAutomatico(minutos: number | null): Promise<void>;
+  retomarAutomatico(): Promise<void>;
+  definirAutomaticoDoJogo(id: string, ligado: boolean): Promise<void>;
+  definirRetencao(politica: RetentionView): Promise<void>;
+  /** `null` = o jogo volta a usar o padrão. */
+  definirRetencaoDoJogo(id: string, politica: RetentionView | null): Promise<void>;
+  definirTemposDoAutomatico(tempos: AutoTimesView): Promise<void>;
+  /** `null` = o jogo segue o ajuste geral. */
+  definirIncluirConfigDoJogo(id: string, valor: boolean | null): Promise<void>;
+  fixarBackup(id: string, arquivo: string, fixado: boolean): Promise<SnapshotView>;
+  apagarBackup(id: string, arquivo: string): Promise<void>;
+  atividade(limite?: number): Promise<ActivityView[]>;
+  definirFecharParaBandeja(ligado: boolean): Promise<void>;
+  definirIniciarComWindows(ligado: boolean): Promise<void>;
+  definirNotificacoes(ligado: boolean): Promise<void>;
+  removerRegistrosDoWindows(): Promise<void>;
+  /** O jogo que esta janela deve abrir (ela foi aberta pela notificação), uma vez só. */
+  jogoParaAbrir(): Promise<string | null>;
   /** Capa da Steam baixada em segundo plano. Devolve a função que para de ouvir. */
   aoReceberCapa(cb: (id: string, caminho: string) => void): () => void;
-  /** A janela não fechou porque um backup ou restauração está rodando. */
+  /** O "Sair" está esperando um backup ou uma restauração terminar. */
   aoBloquearFechar(cb: () => void): () => void;
+  /** A situação do backup automático mudou (ligado, pausado, cofre fora…). */
+  aoMudarSituacao(cb: (s: AutoStatusView) => void): () => void;
+  /** O app mudou a biblioteca por conta própria (backup automático, save novo). */
+  aoMudarBiblioteca(cb: () => void): () => void;
+  /** Backups automáticos feitos sem notificação do Windows. */
+  aoFazerBackupAutomatico(cb: (itens: AutoBackupView[]) => void): () => void;
+  /** Clique na notificação ("Ver histórico"). */
+  aoAbrirJogo(cb: (id: string) => void): () => void;
+  /** Aviso do app (ex.: o cofre voltou). */
+  aoAvisar(cb: (texto: string) => void): () => void;
   /** Endereço para mostrar uma imagem local num <img>. */
   srcDaImagem(caminho: string): string;
   janela: Janela;
@@ -137,8 +173,30 @@ export const tauriBackend: Backend = {
   atualizarBase: () => chamar("atualizar_base"),
   concluirPrimeiroUso: (pastaDoCofre) => chamar("concluir_primeiro_uso", { pastaDoCofre }),
   jogosAbertos: () => chamar("jogos_abertos"),
+  situacaoAutomatico: () => chamar("situacao_automatico"),
+  definirAutomatico: (ligado) => chamar("definir_automatico", { ligado }),
+  pausarAutomatico: (minutos) => chamar("pausar_automatico", { minutos }),
+  retomarAutomatico: () => chamar("retomar_automatico"),
+  definirAutomaticoDoJogo: (id, ligado) => chamar("definir_automatico_do_jogo", { id, ligado }),
+  definirRetencao: (politica) => chamar("definir_retencao", { politica }),
+  definirRetencaoDoJogo: (id, politica) => chamar("definir_retencao_do_jogo", { id, politica }),
+  definirTemposDoAutomatico: (tempos) => chamar("definir_tempos_do_automatico", { tempos }),
+  definirIncluirConfigDoJogo: (id, valor) => chamar("definir_incluir_config_do_jogo", { id, valor }),
+  fixarBackup: (id, arquivo, fixado) => chamar("fixar_backup", { id, arquivo, fixado }),
+  apagarBackup: (id, arquivo) => chamar("apagar_backup", { id, arquivo }),
+  atividade: (limite) => chamar("atividade", { limite: limite ?? null }),
+  definirFecharParaBandeja: (ligado) => chamar("definir_fechar_para_bandeja", { ligado }),
+  definirIniciarComWindows: (ligado) => chamar("definir_iniciar_com_windows", { ligado }),
+  definirNotificacoes: (ligado) => chamar("definir_notificacoes", { ligado }),
+  removerRegistrosDoWindows: () => chamar("remover_registros_do_windows"),
+  jogoParaAbrir: () => chamar("jogo_para_abrir"),
   aoReceberCapa: (cb) => ouvir<{ id: string; caminho: string }>("capa", (p) => cb(p.id, p.caminho)),
   aoBloquearFechar: (cb) => ouvir<null>("fechar-bloqueado", () => cb()),
+  aoMudarSituacao: (cb) => ouvir<AutoStatusView>("situacao", cb),
+  aoMudarBiblioteca: (cb) => ouvir<null>("biblioteca-mudou", () => cb()),
+  aoFazerBackupAutomatico: (cb) => ouvir<{ itens: AutoBackupView[] }>("backup-automatico", (p) => cb(p.itens)),
+  aoAbrirJogo: (cb) => ouvir<{ id: string }>("abrir-jogo", (p) => cb(p.id)),
+  aoAvisar: (cb) => ouvir<string>("aviso", cb),
   srcDaImagem: (caminho) => convertFileSrc(caminho),
   janela: {
     minimizar: () => getCurrentWindow().minimize(),

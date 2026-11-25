@@ -5,6 +5,7 @@ import { createStore, useStore } from "zustand";
 import { ErroApp, type Backend } from "../api/backend";
 import type { AddGameRequest } from "../api/gerado/AddGameRequest";
 import type { AppStateView } from "../api/gerado/AppStateView";
+import type { AutoStatusView } from "../api/gerado/AutoStatusView";
 import type { GameView } from "../api/gerado/GameView";
 import type { LibraryView } from "../api/gerado/LibraryView";
 import type { RestoreResultView } from "../api/gerado/RestoreResultView";
@@ -69,8 +70,21 @@ export interface AppState {
   restauracao: PedidoRestauracao | null;
   /** Escolha de arquivos de uma versão (restauração seletiva). */
   selecaoArquivos: { id: string } | null;
+  /** Situação do backup automático (cartão do cofre). */
+  situacao: AutoStatusView | null;
 
   carregarEstado(): Promise<void>;
+  carregarSituacao(): Promise<void>;
+  /** Situação nova contada pelo app. */
+  aplicarSituacao(s: AutoStatusView): void;
+  definirAutomatico(ligado: boolean): Promise<void>;
+  /** Pausa o automático; `null` = até reabrir o app. */
+  pausar(minutos: number | null): Promise<void>;
+  retomar(): Promise<void>;
+  /** O app mudou a biblioteca sozinho: recarrega a lista e o histórico do painel aberto. */
+  recarregarDoApp(): Promise<void>;
+  /** Abre o jogo no Histórico (clique na notificação). */
+  abrirJogoNoHistorico(id: string): void;
   /** Novo estado do app (cofre trocado, achado ou criado): limpa o que era do cofre anterior. */
   aplicarEstado(estado: AppStateView): Promise<void>;
   /** Fim do primeiro uso: vai para a biblioteca. */
@@ -168,6 +182,7 @@ export function createAppStore(backend: Backend) {
     historicos: {},
     restauracao: null,
     selecaoArquivos: null,
+    situacao: null,
 
     async carregarEstado() {
       try {
@@ -177,14 +192,71 @@ export function createAppStore(backend: Backend) {
         for (const aviso of estado.warnings) {
           if (!get().toasts.some((t) => t.texto === aviso)) get().avisar("aviso", aviso);
         }
+        void get().carregarSituacao();
         if (estado.phase === "pronto") {
           await get().carregarBiblioteca();
           // Abre com o cache na hora e escaneia em seguida.
           void get().escanear();
+          // Janela aberta pelo clique na notificação: já mostra o jogo.
+          const jogo = await backend.jogoParaAbrir().catch(() => null);
+          if (jogo) get().abrirJogoNoHistorico(jogo);
         }
       } catch (e) {
         set({ erroInicial: ErroApp.de(e).message });
       }
+    },
+
+    async carregarSituacao() {
+      try {
+        set({ situacao: await backend.situacaoAutomatico() });
+      } catch {
+        // Sem a situação, o cartão só não mostra a linha do automático.
+      }
+    },
+
+    aplicarSituacao(s) {
+      set({ situacao: s });
+    },
+
+    async definirAutomatico(ligado) {
+      const antes = get().situacao;
+      // A chave responde na hora; a situação de verdade chega do app em seguida.
+      if (antes) set({ situacao: { ...antes, state: ligado ? "ativo" : "desligado", pausedUntil: null } });
+      try {
+        await backend.definirAutomatico(ligado);
+      } catch (e) {
+        set({ situacao: antes });
+        get().avisar("erro", ErroApp.de(e).message);
+      }
+    },
+
+    async pausar(minutos) {
+      try {
+        await backend.pausarAutomatico(minutos);
+      } catch (e) {
+        get().avisar("erro", ErroApp.de(e).message);
+      }
+    },
+
+    async retomar() {
+      try {
+        await backend.retomarAutomatico();
+      } catch (e) {
+        get().avisar("erro", ErroApp.de(e).message);
+      }
+    },
+
+    async recarregarDoApp() {
+      if (get().estado?.phase !== "pronto") return;
+      await get().carregarBiblioteca();
+      const p = get().painel;
+      if (p) await get().carregarHistorico(p.id);
+    },
+
+    abrirJogoNoHistorico(id) {
+      if (get().estado?.phase !== "pronto") return;
+      set({ tela: "biblioteca" });
+      get().abrirPainel(id, { aba: "historico" });
     },
 
     async aplicarEstado(estado) {
