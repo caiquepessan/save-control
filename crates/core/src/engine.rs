@@ -233,6 +233,9 @@ impl Engine {
             include_config: self.cfg.include_config,
         };
         let mut games = scan(&input);
+        for g in &mut games {
+            self.sem_o_app(g);
+        }
         games.extend(self.vault_only_games(&games));
 
         let mut out = Vec::with_capacity(games.len());
@@ -265,9 +268,10 @@ impl Engine {
             local: &self.local,
             include_config: self.cfg.include_config,
         };
-        let game = scan_game(&input, game_id)
+        let mut game = scan_game(&input, game_id)
             .or_else(|| self.vault_only_game(game_id))
             .ok_or_else(|| Error::NotFound(format!("jogo {game_id}")))?;
+        self.sem_o_app(&mut game);
         if let Some(slot) = self.games.iter_mut().find(|g| g.id == game_id) {
             *slot = game.clone();
         }
@@ -366,16 +370,25 @@ impl Engine {
             v.sort();
             v
         };
+        let agora = |id: &str| {
+            scan_game(&input, id).map(|mut g| {
+                self.sem_o_app(&mut g);
+                key(&g)
+            })
+        };
         self.games
             .iter()
             .filter(|g| !g.vault_only)
-            .filter(|g| scan_game(&input, &g.id).as_ref().map(key).unwrap_or_default() != key(g))
+            .filter(|g| agora(&g.id).unwrap_or_default() != key(g))
             .map(|g| g.id.clone())
             .collect()
     }
 
     /// Jogos com alguma pasta de save que contém `path` (sem diferença de maiúsculas).
     pub fn games_for_path(&self, path: &Path) -> Vec<String> {
+        if self.do_app(path) {
+            return Vec::new();
+        }
         let p = slash(path).to_lowercase();
         self.games
             .iter()
@@ -387,6 +400,21 @@ impl Engine {
             })
             .map(|g| g.id.clone())
             .collect()
+    }
+
+    /// O cofre e a pasta de dados do app nunca fazem parte de um jogo (§7.4: o
+    /// próprio cofre é ruído). Dentro de uma pasta de save, cada backup entraria
+    /// no próximo e o vigia faria um backup atrás do outro.
+    fn do_app(&self, path: &Path) -> bool {
+        let p = slash(path).to_lowercase();
+        [&self.cfg.vault_dir, &self.cfg.data_dir].iter().any(|d| {
+            let d = slash(d).to_lowercase();
+            !d.is_empty() && (p == d || p.starts_with(&format!("{d}/")))
+        })
+    }
+
+    fn sem_o_app(&self, g: &mut Game) {
+        g.files.retain(|f| !self.do_app(&f.abs_path));
     }
 
     /// Jogos do último escaneamento.

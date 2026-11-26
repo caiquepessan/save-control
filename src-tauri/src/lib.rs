@@ -10,7 +10,6 @@ use std::path::{Path, PathBuf};
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::mpsc::{Receiver, Sender};
 use std::sync::{Arc, Mutex, MutexGuard};
-use std::thread::JoinHandle;
 use std::time::{Duration, Instant};
 
 use savecontrol_app::auto_worker::{self, AutoWorker, Command, Sink, SystemClock};
@@ -20,6 +19,7 @@ use savecontrol_app::dto::{AutoBackupView, AutoState, AutoStatusView};
 use savecontrol_app::paths::resolve_paths;
 use savecontrol_app::registro::{Integracao, WinRegistro, unidade_removivel};
 use savecontrol_app::service::{AppService, BusyFlag};
+use savecontrol_app::texts;
 use savecontrol_core::env::SystemPaths;
 use savecontrol_core::manifest::store::HttpFetcher;
 use savecontrol_core::process::SystemProbe;
@@ -48,7 +48,6 @@ pub struct Shared {
     /// Canal do trabalhador do backup automático.
     worker: Sender<Command>,
     worker_rx: Mutex<Option<Receiver<Command>>>,
-    worker_thread: Mutex<Option<JoinHandle<()>>>,
     pub integracao: Mutex<Integracao>,
     /// Última situação publicada pelo trabalhador.
     pub status: Mutex<AutoStatusView>,
@@ -226,8 +225,9 @@ pub fn abrir_jogo(app: &AppHandle, id: &str) {
 }
 
 /// "Sair" (bandeja, ou fechar a janela com "fechar para a bandeja" desligado):
-/// para o trabalhador, espera o backup em andamento terminar (até 10 min),
-/// grava a geometria da janela e fecha o app.
+/// para o trabalhador, espera o backup ou a restauração em andamento terminar
+/// (um lote do automático conta inteiro; até 10 min), grava a geometria da
+/// janela e fecha o app. Escaneamento e base de jogos não seguram a saída.
 pub fn sair(app: &AppHandle) {
     let shared = app.state::<Shared>();
     if shared.saindo.swap(true, Ordering::SeqCst) {
@@ -241,14 +241,7 @@ pub fn sair(app: &AppHandle) {
     let app = app.clone();
     std::thread::spawn(move || {
         let shared = app.state::<Shared>();
-        let limite = Instant::now() + ESPERA_AO_SAIR;
-        let trabalhador = travar(&shared.worker_thread).take();
-        if let Some(t) = trabalhador {
-            while !t.is_finished() && Instant::now() < limite {
-                std::thread::sleep(Duration::from_millis(50));
-            }
-        }
-        shared.busy.wait_idle(limite.saturating_duration_since(Instant::now()));
+        shared.busy.wait_idle(ESPERA_AO_SAIR);
         if let Some(ws) = *travar(&shared.janela) {
             if let Ok(mut svc) = shared.svc.try_lock() {
                 let _ = svc.save_window(ws);
@@ -256,6 +249,50 @@ pub fn sair(app: &AppHandle) {
         }
         app.exit(0);
     });
+}
+
+/// O motivo na tela de desligamento do Windows ("Terminando um backup…"),
+/// enquanto existir. Só dá para mostrar com a janela aberta.
+struct MotivoDoDesligamento(Option<isize>);
+
+impl MotivoDoDesligamento {
+    fn mostrar(app: &AppHandle) -> MotivoDoDesligamento {
+        #[cfg(windows)]
+        if let Some(hwnd) = app.get_webview_window("main").and_then(|w| w.hwnd().ok()) {
+            use windows_sys::Win32::System::Shutdown::ShutdownBlockReasonCreate;
+            let texto: Vec<u16> = texts::DESLIGANDO.encode_utf16().chain(std::iter::once(0)).collect();
+            unsafe { ShutdownBlockReasonCreate(hwnd.0 as _, texto.as_ptr()) };
+            return MotivoDoDesligamento(Some(hwnd.0 as isize));
+        }
+        let _ = app;
+        MotivoDoDesligamento(None)
+    }
+}
+
+impl Drop for MotivoDoDesligamento {
+    fn drop(&mut self) {
+        #[cfg(windows)]
+        if let Some(hwnd) = self.0 {
+            use windows_sys::Win32::System::Shutdown::ShutdownBlockReasonDestroy;
+            unsafe { ShutdownBlockReasonDestroy(hwnd as _) };
+        }
+    }
+}
+
+/// O fim do app. No fim da sessão do Windows (desligar, reiniciar, sair da
+/// conta) o tao chega aqui sem passar pelo "Sair" e encerra o processo logo
+/// depois: espera o backup ou a restauração em andamento, como o "Sair".
+fn ao_encerrar(app: &AppHandle) {
+    let shared = app.state::<Shared>();
+    shared.saindo.store(true, Ordering::SeqCst);
+    shared.mandar(Command::Quit);
+    if shared.busy.is_busy() {
+        let _motivo = MotivoDoDesligamento::mostrar(app);
+        shared.busy.wait_idle(ESPERA_AO_SAIR);
+    }
+    if let Ok(svc) = shared.svc.try_lock() {
+        svc.log_info("o Save Control fechou");
+    }
 }
 
 #[derive(Clone, Serialize)]
@@ -282,7 +319,11 @@ impl Sink for TauriSink {
 
     fn backed_up(&self, items: &[AutoBackupView], game_closed: bool) {
         let shared = self.0.state::<Shared>();
-        let notificou = game_closed && shared.notificacoes.load(Ordering::SeqCst) && toast::mostrar(&self.0, items);
+        let quer_notificar = game_closed && shared.notificacoes.load(Ordering::SeqCst);
+        let notificou = quer_notificar && toast::mostrar(&self.0, items);
+        if quer_notificar && !notificou {
+            travar(&shared.svc).log_error("a notificação do Windows não apareceu; o aviso foi para a janela");
+        }
         if !notificou {
             let _ = self.0.emit("backup-automatico", BackupAutomatico { itens: items.to_vec() });
         }
@@ -319,7 +360,6 @@ pub fn run() {
         criando_janela: AtomicBool::new(false),
         worker: tx,
         worker_rx: Mutex::new(Some(rx)),
-        worker_thread: Mutex::new(None),
         integracao: Mutex::new(Integracao::new(Box::new(WinRegistro), exe, data_dir, Box::new(unidade_removivel))),
         status: Mutex::new(AutoStatusView {
             state: AutoState::Parado,
@@ -353,10 +393,19 @@ pub fn run() {
             let status = travar(&shared.status).clone();
             tray::criar(&handle, &status)?;
 
+            let na_bandeja = std::env::args().any(|a| a == "--bandeja");
+            travar(&shared.svc).log_info(&format!(
+                "Save Control {} abriu{}",
+                env!("CARGO_PKG_VERSION"),
+                if na_bandeja { " na bandeja" } else { "" }
+            ));
+
             // "Iniciar com o Windows" apontando para outra cópia do app.
             let aviso = travar(&shared.integracao).corrigir_inicio();
             if let Some(aviso) = aviso {
-                travar(&shared.svc).add_warning(aviso);
+                let mut svc = travar(&shared.svc);
+                svc.log_info(&aviso);
+                svc.add_warning(aviso);
             }
 
             let rx = travar(&shared.worker_rx).take();
@@ -368,10 +417,14 @@ pub fn run() {
                     Box::new(SystemClock),
                     Box::new(HttpFetcher::default()),
                 );
-                *travar(&shared.worker_thread) = Some(auto_worker::spawn(worker, rx, shared.worker.clone()));
+                auto_worker::spawn(worker, rx, shared.worker.clone());
             }
 
-            if !std::env::args().any(|a| a == "--bandeja") {
+            if na_bandeja {
+                // Sem janela, ninguém escaneia ao abrir: o trabalhador escaneia já, e
+                // os "Save novo" de antes de abrir entram na fila do automático.
+                shared.mandar(Command::ScanNow);
+            } else {
                 criar_janela(&handle)?;
             }
             Ok(())
@@ -445,14 +498,16 @@ pub fn run() {
         ])
         .build(tauri::generate_context!());
     match app {
-        Ok(app) => app.run(|app, event| {
+        Ok(app) => app.run(|app, event| match event {
             // Fechar a última janela não fecha o app: só o "Sair" (app.exit) fecha.
-            if let RunEvent::ExitRequested { code: None, api, .. } = &event {
+            RunEvent::ExitRequested { code: None, api, .. } => {
                 api.prevent_exit();
                 if !app.state::<Shared>().fechar_para_bandeja.load(Ordering::SeqCst) {
                     sair(app);
                 }
             }
+            RunEvent::Exit => ao_encerrar(app),
+            _ => {}
         }),
         Err(e) => avisar(&format!("O Save Control não conseguiu abrir: {e}")),
     }

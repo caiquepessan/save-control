@@ -324,3 +324,16 @@ fn retencao_sem_backup_recente_da_erro() {
     assert_eq!(s.settings().unwrap().retention.auto_recent, 10, "não gravou a retenção recusada");
     assert_eq!(view(&mut s, &id).retention, None, "não gravou a retenção recusada do jogo");
 }
+
+/// Erro de backup vai também para o log (logs\save-control.log).
+#[test]
+fn erro_de_backup_vai_para_o_log() {
+    use std::os::windows::fs::OpenOptionsExt;
+    let w = mundo();
+    let mut s = pronto(&w);
+    let (id, dir) = jogo(&mut s, &w, "Travado", &[]);
+    let _trava = std::fs::OpenOptions::new().read(true).write(true).share_mode(0).open(dir.join("slot.sav")).unwrap();
+    assert!(s.auto_backup(&id).is_err());
+    let log = common::ler(&s.paths().logs_dir().join("save-control.log"));
+    assert!(log.contains("ERRO") && log.contains("Travado"), "{log}");
+}

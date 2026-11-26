@@ -7,11 +7,11 @@ use std::sync::mpsc;
 use std::sync::{Arc, Mutex};
 
 use chrono::{DateTime, Duration, TimeZone, Utc};
-use common::{Mundo, mundo, pronto, write};
+use common::{Mundo, mundo, pronto, servico, write};
 use savecontrol_app::activity::ActivityKind;
 use savecontrol_app::auto_worker::{AutoWorker, Clock, Command, Sink, Watcher};
 use savecontrol_app::dto::*;
-use savecontrol_app::service::AppService;
+use savecontrol_app::service::{AppService, BusyFlag};
 use savecontrol_core::error::{Error, Result};
 use savecontrol_core::manifest::store::{FetchResult, Fetcher};
 use savecontrol_core::process::{ProcessProbe, RunningProcess};
@@ -431,4 +431,136 @@ fn vigia_avisa_quando_o_save_muda() {
         }
     }
     assert!(chegou, "o vigia não avisou a mudança no save");
+}
+
+impl Cena {
+    /// Outra sessão do app no mesmo PC e no mesmo cofre (o app fechou e abriu de novo).
+    fn nova_sessao(&self) -> Arc<Mutex<AppService>> {
+        Arc::new(Mutex::new(servico(&self.w, BusyFlag::default())))
+    }
+
+    fn trabalhador_de(&self, svc: &Arc<Mutex<AppService>>) -> AutoWorker {
+        AutoWorker::new(
+            svc.clone(),
+            Box::new(self.processos.clone()),
+            Box::new(self.saida.clone()),
+            Box::new(self.relogio.clone()),
+            Box::new(SemRede),
+        )
+    }
+}
+
+fn automaticos_de(svc: &Arc<Mutex<AppService>>, id: &str) -> usize {
+    let h = svc.lock().unwrap().history(id).unwrap();
+    h.iter().filter(|s| s.kind == SnapshotKindView::Auto).count()
+}
+
+/// A janela escaneia ao abrir e acha um save que mudou com o app fechado: ele
+/// entra na fila do automático (o status "Save novo" promete isso).
+#[test]
+fn save_novo_achado_no_escaneamento_entra_na_fila() {
+    let c = cena();
+    let (id, save) = c.jogo("JogoA", &[]);
+    c.svc.lock().unwrap().backup_game(&id, None).unwrap();
+    let mut t = c.trabalhador();
+    t.tick();
+    write(&save, b"jogou com o app fechado");
+    c.svc.lock().unwrap().scan().unwrap();
+    t.handle(Command::ConfigChanged);
+    c.passo(&mut t, Duration::seconds(59));
+    assert_eq!(c.automaticos(&id), 0, "não esperou os 60 s sem mudanças");
+    c.passo(&mut t, Duration::seconds(1));
+    assert_eq!(c.automaticos(&id), 1, "o save novo achado no escaneamento ficou sem backup");
+}
+
+/// Aberto pela bandeja, ninguém escaneia ao abrir: o app pede um escaneamento
+/// (ScanNow) e o save que mudou com o PC desligado entra na fila.
+#[test]
+fn inicio_pela_bandeja_escaneia_e_agenda_o_save_novo() {
+    let c = cena();
+    let (id, save) = c.jogo("JogoA", &[]);
+    c.svc.lock().unwrap().backup_game(&id, None).unwrap();
+    write(&save, b"jogou antes de desligar o PC");
+    let svc = c.nova_sessao();
+    let mut t = c.trabalhador_de(&svc);
+    t.handle(Command::ScanNow);
+    t.tick();
+    assert_eq!(t.status().watching, 1, "não vigia nada depois de escanear");
+    c.passo(&mut t, Duration::seconds(60));
+    assert_eq!(automaticos_de(&svc, &id), 1, "o save novo de antes de abrir ficou sem backup");
+}
+
+/// O app abriu com o HD do cofre desligado; a pessoa jogou e religou o HD: o
+/// save novo entra na fila quando o cofre volta ("continua de onde parou").
+#[test]
+fn cofre_que_volta_depois_de_abrir_agenda_os_saves_novos() {
+    let c = cena();
+    let (id, save) = c.jogo("JogoA", &[]);
+    c.svc.lock().unwrap().backup_game(&id, None).unwrap();
+    let cofre = c.w.exe.join("cofre");
+    let fora = c.w.t.path().join("hd-desligado");
+    std::fs::rename(&cofre, &fora).unwrap();
+    let svc = c.nova_sessao();
+    let mut t = c.trabalhador_de(&svc);
+    t.tick();
+    assert_eq!(c.saida.ultimo_estado(), Some(AutoState::Parado));
+    write(&save, b"jogou com o HD desligado");
+    std::fs::rename(&fora, &cofre).unwrap();
+    c.passo(&mut t, Duration::seconds(30));
+    assert_eq!(c.saida.ultimo_estado(), Some(AutoState::Ativo));
+    c.passo(&mut t, Duration::seconds(60));
+    assert_eq!(automaticos_de(&svc, &id), 1, "o save novo não entrou na fila quando o cofre voltou");
+}
+
+/// Um lote de backups conta como "ocupado" do começo ao fim: o "Sair" e o
+/// desligamento do Windows esperam o lote inteiro, não só o backup da vez.
+#[test]
+fn o_lote_inteiro_conta_como_ocupado() {
+    #[derive(Clone)]
+    struct OlhaOcupado {
+        ocupado: BusyFlag,
+        vistos: Arc<Mutex<Vec<(&'static str, bool)>>>,
+    }
+    impl Sink for OlhaOcupado {
+        fn status(&self, s: &AutoStatusView) {
+            if s.busy {
+                self.vistos.lock().unwrap().push(("começo", self.ocupado.is_busy()));
+            }
+        }
+        fn library_changed(&self) {}
+        fn backed_up(&self, _items: &[AutoBackupView], _game_closed: bool) {
+            self.vistos.lock().unwrap().push(("fim", self.ocupado.is_busy()));
+        }
+        fn notice(&self, _text: &str) {}
+    }
+
+    let c = cena();
+    let (a, save_a) = c.jogo("JogoA", &[]);
+    let (b, save_b) = c.jogo("JogoB", &[]);
+    let olho = OlhaOcupado { ocupado: c.svc.lock().unwrap().busy(), vistos: Arc::default() };
+    let mut t = AutoWorker::new(
+        c.svc.clone(),
+        Box::new(c.processos.clone()),
+        Box::new(olho.clone()),
+        Box::new(c.relogio.clone()),
+        Box::new(SemRede),
+    );
+    t.tick();
+    mudar(&mut t, &save_a, "a");
+    mudar(&mut t, &save_b, "b");
+    c.passo(&mut t, Duration::seconds(60));
+    assert_eq!(c.automaticos(&a) + c.automaticos(&b), 2);
+    assert_eq!(*olho.vistos.lock().unwrap(), [("começo", true), ("fim", true)]);
+}
+
+/// O trabalhador não engole falhas: a base de jogos que não baixou vai para o log.
+#[test]
+fn falha_da_base_de_jogos_vai_para_o_log() {
+    let c = cena();
+    let mut t = c.trabalhador();
+    t.handle(Command::ScanNow);
+    t.tick();
+    let arquivo = c.svc.lock().unwrap().paths().logs_dir().join("save-control.log");
+    let log = common::ler(&arquivo);
+    assert!(log.contains("ERRO") && log.contains("base de jogos"), "{log}");
 }

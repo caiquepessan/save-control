@@ -30,6 +30,7 @@ use crate::activity::{ActivityEntry, ActivityKind, ActivityLog};
 use crate::config::{AppConfig, AutoTimes, WindowState, load_config, save_config};
 use crate::covers::{CoverChoice, CoverStore};
 use crate::dto::*;
+use crate::logs::Logger;
 use crate::paths::{AppPaths, VAULT_DIR_NAME};
 use crate::texts;
 use crate::view::{ViewCtx, date_str, game_view, path_str, snapshot_view, vault_view};
@@ -155,6 +156,9 @@ pub struct AppService {
     /// O config.json existe mas não deu para ler: nada é gravado por cima dele.
     read_only: bool,
     activity: ActivityLog,
+    /// `logs\save-control.log`: tudo o que vai para a Atividade e o que o
+    /// trabalhador do automático precisa contar (base, escaneamento, vigia).
+    logger: Logger,
 }
 
 impl AppService {
@@ -168,6 +172,7 @@ impl AppService {
         warnings.extend(loaded.warning);
         let covers = CoverStore { dir: paths.covers_dir() };
         let activity = ActivityLog::new(paths.activity_file());
+        let logger = Logger::new(paths.logs_dir());
         AppService {
             paths,
             sys,
@@ -183,7 +188,16 @@ impl AppService {
             covers,
             read_only: loaded.read_only,
             activity,
+            logger,
         }
+    }
+
+    pub fn log_info(&self, msg: &str) {
+        self.logger.info(msg);
+    }
+
+    pub fn log_error(&self, msg: &str) {
+        self.logger.error(msg);
     }
 
     pub fn paths(&self) -> &AppPaths {
@@ -441,6 +455,15 @@ impl AppService {
     /// Uma linha na Atividade (falhar ao gravar nunca atrapalha a ação).
     fn record(&self, kind: ActivityKind, game_id: Option<&str>, detail: String) {
         let title = game_id.map(|id| self.title_for(id));
+        let linha = match &title {
+            Some(t) => format!("{kind:?} · {t}: {detail}"),
+            None => format!("{kind:?}: {detail}"),
+        };
+        if kind == ActivityKind::Error {
+            self.logger.error(&linha);
+        } else {
+            self.logger.info(&linha);
+        }
         let entry = ActivityEntry { at: Utc::now(), kind, game_id: game_id.map(str::to_string), title, detail };
         let _ = self.activity.append(&entry);
     }
@@ -872,6 +895,16 @@ impl AppService {
 
     pub fn changed_game_ids(&self) -> Vec<String> {
         self.engine.as_ref().map(|e| e.changed_games()).unwrap_or_default()
+    }
+
+    /// Jogos com "Save novo" que o automático pode pegar: o escaneamento achou
+    /// um save que não bate com nenhum backup (§7.5: "o automático vai pegar").
+    pub fn new_save_ids(&self) -> Vec<String> {
+        self.statuses
+            .iter()
+            .filter(|(id, s)| **s == GameStatus::NewSave && self.can_back_up(id))
+            .map(|(id, _)| id.clone())
+            .collect()
     }
 
     /// Jogos que o automático vigia (com pasta de save e automático ligado) e as pastas deles.

@@ -1,4 +1,4 @@
-import { screen, waitFor, within } from "@testing-library/react";
+import { act, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { createDemoBackend } from "../api/demo";
 import { renderApp } from "../test/render";
@@ -52,5 +52,16 @@ describe("cofre sumido", () => {
     expect(screen.getByText("Arquivo inválido (jogos.json)")).toBeInTheDocument();
     await userEvent.click(screen.getByRole("button", { name: "Abrir a pasta de dados" }));
     expect(abrir).toHaveBeenCalledWith("D:\\Save Control\\SaveControl-dados");
+  });
+
+  it("quando o cofre volta, a tela sai sozinha", async () => {
+    const backend = createDemoBackend({ atraso: 0, fase: "cofreSumiu" });
+    renderApp(backend);
+    expect(await screen.findByRole("heading", { name: "Não encontramos o cofre" })).toBeInTheDocument();
+    // O trabalhador do app viu o HD de volta: o app já está pronto e avisa que a biblioteca mudou.
+    const original = backend.estado;
+    vi.spyOn(backend, "estado").mockImplementation(async () => ({ ...(await original()), phase: "pronto" }));
+    act(() => backend.emitirBibliotecaMudou());
+    expect(await screen.findByRole("heading", { name: "Seus jogos" })).toBeInTheDocument();
   });
 });

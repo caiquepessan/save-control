@@ -310,3 +310,26 @@ fn sabe_quando_da_para_ver_o_jogo_aberto() {
     assert!(savecontrol_core::process::can_tell_running(&achar(&a.id)));
     assert!(!savecontrol_core::process::can_tell_running(&achar(&b.id)));
 }
+
+/// O app (cofre e pasta de dados) dentro da pasta do save de um jogo: os
+/// arquivos do app ficam fora do jogo, senão cada backup entraria no próximo.
+#[test]
+fn cofre_e_dados_dentro_da_pasta_do_save_ficam_de_fora() {
+    let t = tempfile::tempdir().unwrap();
+    let s = SystemPaths::under_home(&t.path().join("home-a"), "a");
+    let dir = s.app_data.join("JogoA");
+    write(&dir.join("slot.sav"), b"1");
+    let cfg = EngineConfig { data_dir: dir.join("SaveControl-dados"), vault_dir: dir.join("cofre"), include_config: false };
+    Vault::create(&cfg.vault_dir).unwrap();
+    let mut e = Engine::open(cfg, s.clone(), Box::new(reg("a"))).unwrap();
+    let g = e.add_custom_game("Jogo A", &[dir.clone()], &[], None).unwrap();
+    e.scan().unwrap();
+    criado(e.backup(&g.id, SnapshotKind::Manual, None).unwrap());
+    let (jogo, status) = e.scan().unwrap().into_iter().find(|(j, _)| j.id == g.id).unwrap();
+    let arquivos: Vec<String> = jogo.files.iter().map(|f| f.rel_path.clone()).collect();
+    assert_eq!(arquivos, ["slot.sav"]);
+    assert_eq!(status, GameStatus::Protected, "o próprio backup virou save novo");
+    assert!(e.games_for_path(&dir.join("cofre").join("algum.zip")).is_empty());
+    assert!(e.games_for_path(&dir.join("SaveControl-dados").join("config.json")).is_empty());
+    assert_eq!(e.games_for_path(&dir.join("slot.sav")), [g.id.clone()]);
+}

@@ -14,6 +14,9 @@ pub fn inicio_removivel(antigo: &str) -> String {
     format!("O Save Control iniciava junto com o Windows a partir de {antigo}, num HD removível. Agora ele inicia desta cópia.")
 }
 
+/// Motivo na tela de desligamento do Windows enquanto um backup termina.
+pub const DESLIGANDO: &str = "Terminando um backup. O Save Control fecha assim que ele acabar.";
+
 pub const COFRE_VOLTOU: &str = "O cofre voltou. O backup automático continua de onde parou.";
 
 pub const TEMPO_SEGUNDOS: &str = "Use um valor entre 5 e 600 segundos.";

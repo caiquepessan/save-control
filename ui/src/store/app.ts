@@ -260,7 +260,10 @@ export function createAppStore(backend: Backend) {
     },
 
     async recarregarDoApp() {
-      if (get().estado?.phase !== "pronto") return;
+      const fase = get().estado?.phase;
+      // O trabalhador viu o HD do cofre de volta: sai da tela de cofre sumido.
+      if (fase === "cofreSumiu") return get().carregarEstado();
+      if (fase !== "pronto") return;
       await get().carregarBiblioteca();
       const p = get().painel;
       if (p) await get().carregarHistorico(p.id);

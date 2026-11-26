@@ -5,6 +5,7 @@
 //! Relógio, processos, base de jogos e "avisos para fora" (bandeja, janela,
 //! notificação) são injetáveis: tudo aqui tem teste sem Tauri e sem esperar.
 
+use std::collections::HashSet;
 use std::path::{Path, PathBuf};
 use std::sync::mpsc::{RecvTimeoutError, Receiver, Sender};
 use std::sync::{Arc, Mutex, MutexGuard};
@@ -209,6 +210,7 @@ impl AutoWorker {
             Command::SetEnabled(on) => {
                 let _ = self.svc().set_auto_backup(on);
                 self.raizes_velhas = true;
+                self.agendar_saves_novos(agora);
             }
             Command::ScanNow => self.ultimo_completo = None,
             Command::Changed(p) => self.mudou(&p, agora),
@@ -216,10 +218,23 @@ impl AutoWorker {
                 let regras = self.svc().auto_rules();
                 self.sched.set_rules(regras);
                 self.raizes_velhas = true;
+                // A janela escaneia e avisa por aqui: os "Save novo" achados entram na fila.
+                self.agendar_saves_novos(agora);
             }
             Command::Quit => self.sair = true,
         }
         self.publicar();
+    }
+
+    /// Os "Save novo" achados por um escaneamento (o save mudou com o app
+    /// fechado, ou antes de o vigia começar) entram na fila. Os que já estão
+    /// nela ficam como estão, para não empurrar o prazo deles.
+    fn agendar_saves_novos(&mut self, agora: DateTime<Utc>) {
+        let na_fila: HashSet<String> = self.sched.pending().into_iter().collect();
+        let novos = self.svc().new_save_ids();
+        for id in novos.into_iter().filter(|id| !na_fila.contains(id)) {
+            self.sched.note_change(&id, agora);
+        }
     }
 
     /// Um save mudou: o jogo vira "Save novo" na hora e o backup é agendado.
@@ -280,6 +295,9 @@ impl AutoWorker {
                 self.biblioteca_mudou = true;
                 if ok {
                     self.ultimo_completo = None;
+                    self.svc().log_info("o cofre voltou: o backup automático continua");
+                } else {
+                    self.svc().log_info("cofre indisponível: o backup automático pausou");
                 }
             }
         }
@@ -290,11 +308,20 @@ impl AutoWorker {
             self.ultima_varredura = Some(agora);
             {
                 let mut s = self.svc();
-                let _ = s.update_manifest(&*self.fetcher);
-                let _ = s.scan_with_covers();
+                match s.update_manifest(&*self.fetcher) {
+                    Ok(v) if v.outcome == ManifestOutcome::Falhou => {
+                        s.log_error(&format!("base de jogos: {}", v.message.unwrap_or_default()))
+                    }
+                    Ok(_) => {}
+                    Err(e) => s.log_error(&format!("base de jogos: {}", e.message)),
+                }
+                if let Err(e) = s.scan_with_covers() {
+                    s.log_error(&format!("escaneamento: {}", e.message));
+                }
             }
             self.raizes_velhas = true;
             self.biblioteca_mudou = true;
+            self.agendar_saves_novos(agora);
         }
         if self.raizes_velhas {
             self.raizes_velhas = false;
@@ -349,6 +376,9 @@ impl AutoWorker {
     }
 
     fn fazer_backups(&mut self, vencidos: Vec<Due>, agora: DateTime<Utc>) {
+        // O lote inteiro conta como "ocupado": o "Sair" e o fim da sessão do
+        // Windows esperam o lote todo, não só o backup da vez.
+        let _lote = self.svc().busy().guard();
         let mut feitos = Vec::new();
         let mut fechou = false;
         self.ocupado = true;
@@ -467,7 +497,13 @@ impl AutoWorker {
 /// canal fechar). `tx` é o mesmo canal, para o vigia de pastas mandar as mudanças.
 pub fn spawn(mut worker: AutoWorker, rx: Receiver<Command>, tx: Sender<Command>) -> JoinHandle<()> {
     std::thread::spawn(move || {
-        let mut vigia = Watcher::new(tx).ok();
+        let mut vigia = match Watcher::new(tx) {
+            Ok(v) => Some(v),
+            Err(e) => {
+                worker.svc().log_error(&format!("vigia de pastas não começou (fica só a varredura de 10 min): {e}"));
+                None
+            }
+        };
         let mut versao = u64::MAX;
         loop {
             match rx.recv_timeout(worker.next_wake()) {
@@ -488,7 +524,9 @@ pub fn spawn(mut worker: AutoWorker, rx: Receiver<Command>, tx: Sender<Command>)
             if worker.roots_version() != versao {
                 versao = worker.roots_version();
                 if let Some(v) = vigia.as_mut() {
-                    v.rewatch(&worker.watched_roots());
+                    for (pasta, e) in v.rewatch(&worker.watched_roots()) {
+                        worker.svc().log_error(&format!("vigia de pastas: {}: {e}", pasta.display()));
+                    }
                 }
             }
         }
@@ -517,15 +555,19 @@ impl Watcher {
         Ok(Watcher { inner, vigiando: Vec::new() })
     }
 
-    /// Troca as pastas vigiadas. Pasta que ainda não existe fica para a varredura leve.
-    pub fn rewatch(&mut self, roots: &[PathBuf]) {
+    /// Troca as pastas vigiadas. Pasta que ainda não existe fica para a varredura
+    /// leve; devolve as que existem mas não deu para vigiar (e o erro).
+    pub fn rewatch(&mut self, roots: &[PathBuf]) -> Vec<(PathBuf, notify::Error)> {
         for p in self.vigiando.drain(..) {
             let _ = self.inner.unwatch(&p);
         }
-        for r in roots {
-            if r.is_dir() && self.inner.watch(r, notify::RecursiveMode::Recursive).is_ok() {
-                self.vigiando.push(r.clone());
+        let mut falhas = Vec::new();
+        for r in roots.iter().filter(|r| r.is_dir()) {
+            match self.inner.watch(r, notify::RecursiveMode::Recursive) {
+                Ok(()) => self.vigiando.push(r.clone()),
+                Err(e) => falhas.push((r.clone(), e)),
             }
         }
+        falhas
     }
 }
